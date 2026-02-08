@@ -6,7 +6,8 @@ interface InputControllerOptions {
   getHotspots: () => Hotspot[];
   sendEvent: (event: GameEvent) => void;
   canProcessInteraction?: () => boolean;
-  onCanvasClick?: (point: Point, hotspot: Hotspot | null) => void;
+  onCanvasClick?: (point: Point, hotspot: Hotspot | null, event: MouseEvent) => void;
+  onPointerMove?: (point: Point | null, hotspot: Hotspot | null) => void;
 }
 
 export interface InputController {
@@ -20,6 +21,7 @@ export function createInputController(options: InputControllerOptions): InputCon
   const onPointerMove = (event: PointerEvent): void => {
     const point = toCanvasPoint(event, options.canvas);
     const hotspot = point ? hitTestHotspot(point, options.getHotspots()) : null;
+    options.onPointerMove?.(point, hotspot);
     const nextHoveredId = hotspot?.id ?? null;
 
     if (nextHoveredId !== hoveredHotspotId) {
@@ -29,6 +31,7 @@ export function createInputController(options: InputControllerOptions): InputCon
   };
 
   const onPointerLeave = (): void => {
+    options.onPointerMove?.(null, null);
     if (hoveredHotspotId !== null) {
       hoveredHotspotId = null;
       options.sendEvent({ type: 'HOTSPOT_HOVERED', hotspotId: null });
@@ -42,7 +45,7 @@ export function createInputController(options: InputControllerOptions): InputCon
     }
 
     const hotspot = hitTestHotspot(point, options.getHotspots());
-    options.onCanvasClick?.(point, hotspot);
+    options.onCanvasClick?.(point, hotspot, event);
 
     if (options.canProcessInteraction && !options.canProcessInteraction()) {
       return;

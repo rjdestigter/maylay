@@ -1,4 +1,4 @@
-﻿export type Verb = 'LOOK' | 'TALK' | 'PICK_UP' | 'USE';
+﻿export type Verb = 'LOOK' | 'TALK' | 'PICK_UP' | 'USE' | 'OPEN';
 
 export interface Point {
   x: number;
@@ -27,6 +27,7 @@ export interface RoomDefinition {
   height: number;
   backgroundColor: string;
   hotspots: Hotspot[];
+  walkablePolygon?: Point[];
   overlayText?: string;
 }
 
@@ -38,7 +39,7 @@ export interface InventoryItem {
 export interface PendingInteraction {
   hotspotId: string;
   walkTarget: Point;
-  verb: Verb;
+  verb: Verb | null;
   inventoryItemId: string | null;
 }
 
@@ -50,3 +51,6 @@ export interface ScriptResult {
   roomChangeTo?: string;
   clearSelectedInventory?: boolean;
 }
+
+
+

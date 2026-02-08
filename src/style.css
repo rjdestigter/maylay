@@ -61,6 +61,11 @@ body {
   gap: 6px;
 }
 
+#audio-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
 #sentence-line,
 #verb-bar,
 #inventory-bar,
@@ -82,13 +87,13 @@ body {
 #verb-bar,
 #inventory-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
 }
 
 #inventory-bar {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 button {
@@ -167,3 +172,6 @@ button.active {
     padding: 4px 2px;
   }
 }
+
+
+

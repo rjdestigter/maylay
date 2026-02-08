@@ -1,4 +1,4 @@
-﻿import type { AssetStore } from './assets';
+﻿import type { AssetStore, CharacterAnimationId } from './assets';
 import type { Hotspot, RoomDefinition } from '../game/types';
 
 export interface ActorRenderState {
@@ -15,19 +15,23 @@ export interface RenderParams {
   room: RoomDefinition;
   actor: ActorRenderState;
   hotspots: Hotspot[];
+  walkablePolygon?: { x: number; y: number }[];
   debugHotspots: boolean;
   flags: Record<string, boolean>;
   hoveredHotspotId: string | null;
   devEditor: {
     enabled: boolean;
     selectedHotspotId: string | null;
-    editTarget: 'bounds' | 'spriteBounds' | 'walkTarget';
+    editTarget: 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon';
   };
 }
 
 export class Renderer {
   readonly width = 320;
   readonly height = 180;
+  private readonly lpcFrameWidth = 64;
+  private readonly lpcFrameHeight = 64;
+  private readonly lpcSideRow = 1;
 
   private readonly ctx: CanvasRenderingContext2D;
 
@@ -41,7 +45,7 @@ export class Renderer {
   }
 
   render(params: RenderParams): void {
-    const { room, actor, hotspots, debugHotspots, flags, hoveredHotspotId, devEditor } = params;
+    const { room, actor, hotspots, walkablePolygon, debugHotspots, flags, hoveredHotspotId, devEditor } = params;
     this.ctx.imageSmoothingEnabled = false;
 
     if (room.id === 'room1') {
@@ -70,7 +74,7 @@ export class Renderer {
     this.drawActor(actor);
 
     if (devEditor.enabled) {
-      this.drawDevOverlay(hotspots, devEditor.selectedHotspotId, devEditor.editTarget);
+      this.drawDevOverlay(hotspots, walkablePolygon, devEditor.selectedHotspotId, devEditor.editTarget);
     }
 
     if (room.overlayText) {
@@ -81,30 +85,60 @@ export class Renderer {
   }
 
   private drawActor(actor: ActorRenderState): void {
-    const sprite = this.assets.getImage('actorIdle');
     const clampedWidth = Math.max(8, Math.round(actor.width));
     const clampedHeight = Math.max(8, Math.round(actor.height));
-
-    const walkSine = actor.isWalking ? Math.sin(actor.walkCycle * Math.PI * 2) : 0;
-    const bobOffsetY = actor.isWalking ? Math.round(Math.max(0, walkSine) * 2) : 0;
-    const widthPulse = actor.isWalking ? Math.round(Math.sin(actor.walkCycle * Math.PI * 4) * 1.2) : 0;
-    const drawWidth = Math.max(8, clampedWidth + widthPulse);
-    const drawHeight = Math.max(8, clampedHeight - Math.abs(widthPulse));
-
     const centerX = Math.round(actor.x);
-    const feetY = Math.round(actor.y) - bobOffsetY;
-    const drawX = centerX - Math.floor(drawWidth / 2);
-    const drawY = feetY - drawHeight;
+    const feetY = Math.round(actor.y);
+    const drawX = centerX - Math.floor(clampedWidth / 2);
+    const drawY = feetY - clampedHeight;
+
+    const animationId: CharacterAnimationId = actor.isWalking ? 'walk' : 'idle';
+    const layers = this.assets.getCharacterAnimationLayers(animationId);
+    if (layers.length === 0) {
+      const fallback = this.assets.getImage('actorIdle');
+      this.ctx.drawImage(fallback, drawX, drawY, clampedWidth, clampedHeight);
+      return;
+    }
+
+    const frameCol = this.getLpcFrameColumn(animationId, actor.walkCycle);
+    const frameRow = this.lpcSideRow;
+    const sx = frameCol * this.lpcFrameWidth;
+    const sy = frameRow * this.lpcFrameHeight;
+    const shouldFlip = actor.facing === 'right';
 
     this.ctx.save();
-    if (actor.facing === 'left') {
+    if (shouldFlip) {
       this.ctx.translate(centerX, 0);
       this.ctx.scale(-1, 1);
-      this.ctx.drawImage(sprite, -Math.floor(drawWidth / 2), drawY, drawWidth, drawHeight);
-    } else {
-      this.ctx.drawImage(sprite, drawX, drawY, drawWidth, drawHeight);
+    }
+
+    for (const layer of layers) {
+      this.ctx.drawImage(
+        layer.image,
+        sx,
+        sy,
+        this.lpcFrameWidth,
+        this.lpcFrameHeight,
+        shouldFlip ? -Math.floor(clampedWidth / 2) : drawX,
+        drawY,
+        clampedWidth,
+        clampedHeight,
+      );
     }
     this.ctx.restore();
+  }
+
+  private getLpcFrameColumn(animationId: CharacterAnimationId, walkCycle: number): number {
+    if (animationId === 'walk') {
+      const walkFrames = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+      const index = Math.floor(walkCycle * walkFrames.length) % walkFrames.length;
+      return walkFrames[index];
+    }
+
+    // Subtle idle loop that avoids sparse/empty LPC columns in some exports.
+    const idleFrames = [0, 1, 0, 1];
+    const index = Math.floor(walkCycle * idleFrames.length) % idleFrames.length;
+    return idleFrames[index];
   }
 
   private drawHotspotSprite(hotspot: Hotspot, flags: Record<string, boolean>): void {
@@ -133,9 +167,32 @@ export class Renderer {
 
   private drawDevOverlay(
     hotspots: Hotspot[],
+    walkablePolygon: { x: number; y: number }[] | undefined,
     selectedHotspotId: string | null,
-    editTarget: 'bounds' | 'spriteBounds' | 'walkTarget',
+    editTarget: 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon',
   ): void {
+    if (walkablePolygon && walkablePolygon.length > 0) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(walkablePolygon[0].x, walkablePolygon[0].y);
+      for (let i = 1; i < walkablePolygon.length; i += 1) {
+        this.ctx.lineTo(walkablePolygon[i].x, walkablePolygon[i].y);
+      }
+      if (walkablePolygon.length >= 3) {
+        this.ctx.closePath();
+        this.ctx.fillStyle = 'rgba(126, 242, 154, 0.14)';
+        this.ctx.fill();
+      }
+      this.ctx.strokeStyle = editTarget === 'walkablePolygon' ? '#ff5ca2' : '#7ef29a';
+      this.ctx.lineWidth = editTarget === 'walkablePolygon' ? 2 : 1;
+      this.ctx.stroke();
+      this.ctx.lineWidth = 1;
+
+      for (const vertex of walkablePolygon) {
+        this.ctx.fillStyle = editTarget === 'walkablePolygon' ? '#ff5ca2' : '#7ef29a';
+        this.ctx.fillRect(vertex.x - 1, vertex.y - 1, 3, 3);
+      }
+    }
+
     for (const hotspot of hotspots) {
       const spriteBounds = hotspot.spriteBounds ?? hotspot.bounds;
 

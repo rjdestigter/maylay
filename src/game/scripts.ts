@@ -5,13 +5,6 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
   const verb = context.pendingInteraction?.verb ?? context.selectedVerb;
   const selectedItem = context.pendingInteraction?.inventoryItemId ?? context.selectedInventoryItemId;
 
-  if (hotspot.id === 'door' && context.flags.doorOpen && !(verb === 'USE' && selectedItem === 'key')) {
-    return {
-      dialogueLines: ['You step through the open door.'],
-      roomChangeTo: 'room2',
-    };
-  }
-
   if (verb === 'LOOK') {
     return { dialogueLines: [lookLineFor(hotspot.id, context.flags)] };
   }
@@ -37,6 +30,13 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
   }
 
   if (verb === 'USE') {
+    if (hotspot.id === 'door' && context.flags.doorOpen && selectedItem === null) {
+      return {
+        dialogueLines: ['You step through the open door.'],
+        roomChangeTo: 'room2',
+      };
+    }
+
     if (selectedItem === null) {
       return { dialogueLines: ['Use what? Select an inventory item first.'] };
     }
@@ -58,6 +58,21 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
     }
 
     return { dialogueLines: [`Using ${selectedItem} on ${hotspot.name} does nothing.`] };
+  }
+
+  if (verb === 'OPEN') {
+    if (hotspot.id !== 'door') {
+      return { dialogueLines: [`You can't open the ${hotspot.name}.`] };
+    }
+
+    if (!context.flags.doorOpen) {
+      return { dialogueLines: ["It's locked."] };
+    }
+
+    return {
+      dialogueLines: ['You step through the open door.'],
+      roomChangeTo: 'room2',
+    };
   }
 
   return { dialogueLines: ['Nothing happens.'] };

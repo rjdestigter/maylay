@@ -5,7 +5,7 @@ const DIALOGUE_AUTO_ADVANCE_MS = 1800;
 
 export interface GameContext {
   currentRoomId: string;
-  selectedVerb: Verb;
+  selectedVerb: Verb | null;
   selectedInventoryItemId: string | null;
   flags: Record<string, boolean>;
   inventory: InventoryItem[];
@@ -17,7 +17,7 @@ export interface GameContext {
 
 export type GameEvent =
   | { type: 'BOOTED' }
-  | { type: 'VERB_SELECTED'; verb: Verb }
+  | { type: 'VERB_SELECTED'; verb: Verb | null }
   | { type: 'HOTSPOT_HOVERED'; hotspotId: string | null }
   | { type: 'HOTSPOT_CLICKED'; hotspotId: string; walkTarget: Point }
   | { type: 'INVENTORY_SELECTED'; itemId: string | null }
@@ -27,7 +27,7 @@ export type GameEvent =
 
 const initialContext: GameContext = {
   currentRoomId: 'room1',
-  selectedVerb: 'LOOK',
+  selectedVerb: null,
   selectedInventoryItemId: null,
   flags: {
     keyTaken: false,
@@ -217,4 +217,6 @@ export const gameMachine = setup({
     },
   },
 });
+
+
 

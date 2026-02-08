@@ -17,6 +17,13 @@ export type AssetImageId =
   | 'room1Bg'
   | 'sign';
 
+export type CharacterAnimationId = 'idle' | 'walk';
+
+export interface CharacterAnimationLayer {
+  zIndex: number;
+  image: HTMLImageElement;
+}
+
 const IMAGE_SOURCES: Record<AssetImageId, string> = {
   actorIdle: actorIdleUrl,
   doorClosed: doorClosedUrl,
@@ -42,7 +49,10 @@ export class AssetStore {
     room2Text: '#f1faee',
   };
 
-  constructor(private readonly images: Record<AssetImageId, HTMLImageElement | HTMLCanvasElement>) {}
+  constructor(
+    private readonly images: Record<AssetImageId, HTMLImageElement | HTMLCanvasElement>,
+    private readonly characterAnimations: Record<CharacterAnimationId, CharacterAnimationLayer[]>,
+  ) {}
 
   getColor(id: AssetColorId): string {
     return this.palette[id];
@@ -54,6 +64,10 @@ export class AssetStore {
 
   getImageUrl(id: AssetImageId): string {
     return IMAGE_SOURCES[id];
+  }
+
+  getCharacterAnimationLayers(id: CharacterAnimationId): CharacterAnimationLayer[] {
+    return this.characterAnimations[id];
   }
 }
 
@@ -67,7 +81,8 @@ export async function createAssets(): Promise<AssetStore> {
   );
 
   const images = Object.fromEntries(entries) as Record<AssetImageId, HTMLImageElement | HTMLCanvasElement>;
-  return new AssetStore(images);
+  const characterAnimations = await loadCharacterAnimations();
+  return new AssetStore(images, characterAnimations);
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -77,6 +92,51 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     image.onerror = () => reject(new Error(`Failed to load image: ${url}`));
     image.src = url;
   });
+}
+
+async function loadCharacterAnimations(): Promise<Record<CharacterAnimationId, CharacterAnimationLayer[]>> {
+  const walkModules = import.meta.glob('../assets/character/standard/walk/*.png', {
+    eager: true,
+    import: 'default',
+  }) as Record<string, string>;
+
+  const idleModules = import.meta.glob('../assets/character/standard/idle/*.png', {
+    eager: true,
+    import: 'default',
+  }) as Record<string, string>;
+
+  const [walkLayers, idleLayers] = await Promise.all([
+    loadCharacterLayers(walkModules),
+    loadCharacterLayers(idleModules),
+  ]);
+
+  return {
+    walk: walkLayers,
+    idle: idleLayers,
+  };
+}
+
+async function loadCharacterLayers(modules: Record<string, string>): Promise<CharacterAnimationLayer[]> {
+  const items = await Promise.all(
+    Object.entries(modules).map(async ([path, url]) => {
+      const image = await loadImage(url);
+      const name = path.split('/').pop() ?? path;
+      const zIndex = parseZIndex(name);
+      return { zIndex, image };
+    }),
+  );
+
+  items.sort((a, b) => a.zIndex - b.zIndex);
+  return items;
+}
+
+function parseZIndex(fileName: string): number {
+  const match = /^(\d+)/.exec(fileName.trim());
+  if (!match) {
+    return 0;
+  }
+
+  return Number.parseInt(match[1], 10);
 }
 
 function trimTransparentBounds(image: HTMLImageElement): HTMLImageElement | HTMLCanvasElement {

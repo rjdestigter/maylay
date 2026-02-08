@@ -1,0 +1,200 @@
+{
+  "exportTimestamp": "2026-02-08T14-34-58",
+  "bodyType": "male",
+  "standardAnimations": {
+    "exported": {
+      "spellcast": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "015 arm__arm_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "thrust": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "015 arm__arm_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "walk": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "015 arm__arm_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "slash": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "015 arm__arm_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "shoot": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "015 arm__arm_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "hurt": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "015 arm__arm_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "climb": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "idle": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "jump": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "sit": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "emote": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "run": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "combat": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "1h_backslash": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ],
+      "1h_halfslash": [
+        "020 body_color__amber_.png",
+        "100 human_male__amber_.png",
+        "101 neutral__amber_.png",
+        "009 ponytail__blonde_.png",
+        "120 ponytail__blonde_.png",
+        "130 tricorne__black_.png",
+        "035 cardigan__blue_.png",
+        "020 pantaloons__black_.png",
+        "025 rimmed_boots__brown_.png"
+      ]
+    },
+    "failed": {
+      "spellcast": [],
+      "thrust": [],
+      "walk": [],
+      "slash": [],
+      "shoot": [],
+      "hurt": [],
+      "climb": [],
+      "idle": [],
+      "jump": [],
+      "sit": [],
+      "emote": [],
+      "run": [],
+      "combat": [],
+      "1h_backslash": [],
+      "1h_halfslash": []
+    }
+  },
+  "customAnimations": {
+    "exported": {},
+    "failed": {}
+  },
+  "frameSize": 64,
+  "frameCounts": {}
+}
