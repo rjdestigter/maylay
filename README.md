@@ -17,10 +17,13 @@ To run this project:
 
 ```bash
 npm install
+npm run dev:server
 npm run dev
 npm run build
 npm run preview
 ```
+
+Run `npm run dev:server` and `npm run dev` in separate terminals.
 
 ## Deploy to GitHub Pages
 
@@ -113,3 +116,12 @@ git push -u origin main
 3. Add behavior in `resolveInteraction` in `src/game/scripts.ts`.
 4. If needed, add a visibility rule in `isHotspotVisible`.
 5. Use flags/inventory updates through `ScriptResult` fields.
+
+## Dev Mode Persistence
+
+- Start the persistence server: `npm run dev:server`
+- Start Vite in a second terminal: `npm run dev`
+- In-game dev mode (`F3`):
+  - Edit hotspots/walkable polygon
+  - Press `S` or click `Save room`
+- This writes the current room JSON back to `src/game/rooms/<roomId>.json` through `/api/rooms/:roomId`.

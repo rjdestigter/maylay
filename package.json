@@ -5,6 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
+        "dev:server": "node server/dev-persist-server.mjs",
         "build": "tsc -b && vite build",
         "preview": "vite preview"
     },

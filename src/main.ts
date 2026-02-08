@@ -182,6 +182,7 @@ async function bootstrap(): Promise<void> {
   let audioUnlocked = false;
   let wasInDialogue = false;
   let lastSpokenDialogueKey: string | null = null;
+  let devPersistStatus = 'Room persistence: not saved';
 
   const refreshAudioLabels = (): void => {
     musicToggle.textContent = musicEnabled ? (musicBlocked ? 'Music: On (tap)' : 'Music: On') : 'Music: Off';
@@ -624,6 +625,10 @@ async function bootstrap(): Promise<void> {
     if (!changed && target.dataset.devAction === 'edit-hotspot-description') {
       changed = editSelectedHotspotDescription(actor.getSnapshot().context);
     }
+    if (!changed && target.dataset.devAction === 'save-room') {
+      void persistCurrentRoom(actor.getSnapshot().context);
+      return;
+    }
     if (changed) {
       const snapshot = actor.getSnapshot();
       renderUi(snapshot.context, snapshot.matches('dialogue'));
@@ -756,6 +761,11 @@ async function bootstrap(): Promise<void> {
     }
     if (event.key.toLowerCase() === 'c') {
       void copyCurrentRoomHotspots(actor.getSnapshot().context);
+      event.preventDefault();
+      return;
+    }
+    if (event.key.toLowerCase() === 's') {
+      void persistCurrentRoom(actor.getSnapshot().context);
       event.preventDefault();
       return;
     }
@@ -1162,6 +1172,7 @@ async function bootstrap(): Promise<void> {
         <button type="button" class="dev-chip" data-dev-action="clear-selection">Clear</button>
         <button type="button" class="dev-chip" data-dev-action="add-hotspot">Add hotspot</button>
         <button type="button" class="dev-chip ${hotspot ? '' : 'muted'}" data-dev-action="edit-hotspot-description">Edit description</button>
+        <button type="button" class="dev-chip" data-dev-action="save-room">Save room</button>
       </div>
       <div class="dev-row">
         <span class="dev-label">Edit Target</span>
@@ -1217,8 +1228,9 @@ async function bootstrap(): Promise<void> {
     const line9 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
     const line10 = 'Drag handles: corners resize, center moves | Keyboard: arrows [ ] ; \'';
     const line11 = 'Polygon mode: drag vertex, click edge to insert, Shift/Alt/right-click/Delete to remove, Ctrl+click clear';
-    const line12 = 'Copy room JSON: C or button';
-    devInfo.textContent = [line1, line2, line3, line4, line4b, line4c, line4d, line4e, line5, line6, line7, line8, line9, line10, line11, line12].join('\n');
+    const line12 = 'Copy room JSON: C | Save room JSON: S or button';
+    const line13 = devPersistStatus;
+    devInfo.textContent = [line1, line2, line3, line4, line4b, line4c, line4d, line4e, line5, line6, line7, line8, line9, line10, line11, line12, line13].join('\n');
   }
 
   function buildSentenceLine(context: GameContext, hoveredHotspotId: string | null, hoverWalkable: boolean): SentenceParts {
@@ -1450,6 +1462,49 @@ async function bootstrap(): Promise<void> {
     } catch {
       devInfo.textContent = `${devInfo.textContent}\nClipboard blocked. Copy manually:\n${text}`;
     }
+  }
+
+  async function persistCurrentRoom(context: GameContext): Promise<void> {
+    const room = rooms[context.currentRoomId];
+    if (!room) {
+      devPersistStatus = 'Room persistence: failed (missing room)';
+      renderUi(context, actor.getSnapshot().matches('dialogue'));
+      return;
+    }
+
+    const payload = {
+      room: {
+        id: room.id,
+        name: room.name,
+        width: room.width,
+        height: room.height,
+        backgroundColor: room.backgroundColor,
+        hotspots: room.hotspots,
+        walkablePolygon: room.walkablePolygon ?? [],
+        perspective: room.perspective,
+        overlayText: room.overlayText,
+      },
+    };
+
+    try {
+      const response = await fetch(`/api/rooms/${encodeURIComponent(room.id)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(`HTTP ${response.status} ${message}`);
+      }
+      const now = new Date();
+      devPersistStatus = `Room persistence: saved at ${now.toLocaleTimeString()}`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      devPersistStatus = `Room persistence: failed (${message})`;
+    }
+    renderUi(context, actor.getSnapshot().matches('dialogue'));
   }
 
   function adjustActorSize(dw: number, dh: number, fast: boolean): void {
