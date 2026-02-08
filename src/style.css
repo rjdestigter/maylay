@@ -87,8 +87,46 @@ body {
   min-height: 28px;
   display: flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 6px 10px;
   font-size: clamp(10px, 1.7vw, 15px);
+  background:
+    radial-gradient(circle at 12% -40%, rgba(255, 228, 173, 0.24), transparent 58%),
+    linear-gradient(180deg, #2f1f14 0%, #20150f 48%, #120d0a 100%);
+  border-color: #6b4a2e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 223, 171, 0.25),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.sentence {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.1;
+  letter-spacing: 0.2px;
+  font-family: "Palatino Linotype", "Book Antiqua", serif;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  color: #f4e8cf;
+}
+
+.sentence.muted {
+  opacity: 0.8;
+}
+
+.sentence-prefix {
+  text-transform: uppercase;
+  font-size: 0.93em;
+  color: #f7c070;
+}
+
+.sentence-target {
+  color: #fff4dc;
+  font-weight: 700;
+}
+
+.sentence-connector {
+  color: #d6b489;
+  font-size: 0.92em;
 }
 
 #verb-bar,

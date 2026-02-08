@@ -44,6 +44,10 @@ const SHOULD_TRIM: Record<AssetImageId, boolean> = {
   sign: true,
 };
 
+function isAssetImageId(id: string): id is AssetImageId {
+  return id in IMAGE_SOURCES;
+}
+
 export class AssetStore {
   private readonly palette: Record<AssetColorId, string> = {
     room2Text: '#f1faee',
@@ -59,6 +63,13 @@ export class AssetStore {
   }
 
   getImage(id: AssetImageId): HTMLImageElement | HTMLCanvasElement {
+    return this.images[id];
+  }
+
+  getOptionalImage(id: string): HTMLImageElement | HTMLCanvasElement | null {
+    if (!isAssetImageId(id)) {
+      return null;
+    }
     return this.images[id];
   }
 

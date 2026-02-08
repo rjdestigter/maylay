@@ -16,8 +16,48 @@ const STOP_DISTANCE = 2;
 const WALK_CYCLE_HZ = 4;
 const IDLE_CYCLE_HZ = 0.75;
 const VERBS: Verb[] = ['LOOK', 'TALK', 'PICK_UP', 'USE', 'OPEN'];
+const CURSOR_IDLE = makeCursorCss(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <rect width="32" height="32" fill="none"/>
+    <path d="M6 4 L22 17 L16 18 L20 28 L16 30 L12 20 L8 24 Z" fill="#f3e4bc" stroke="#2c1d10" stroke-width="2"/>
+  </svg>`,
+  3,
+  3,
+  'default',
+);
+const CURSOR_INTERACT = makeCursorCss(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <rect width="32" height="32" fill="none"/>
+    <circle cx="15" cy="15" r="9" fill="#f7d47f" stroke="#3a2613" stroke-width="2"/>
+    <circle cx="15" cy="15" r="3" fill="#3a2613"/>
+    <rect x="14" y="2" width="2" height="6" fill="#3a2613"/>
+    <rect x="14" y="22" width="2" height="6" fill="#3a2613"/>
+    <rect x="2" y="14" width="6" height="2" fill="#3a2613"/>
+    <rect x="22" y="14" width="6" height="2" fill="#3a2613"/>
+  </svg>`,
+  15,
+  15,
+  'pointer',
+);
+const CURSOR_DEV = makeCursorCss(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <rect width="32" height="32" fill="none"/>
+    <path d="M4 24 L8 28 L24 12 L20 8 Z" fill="#6fe3ff" stroke="#0b2f39" stroke-width="2"/>
+    <rect x="19" y="4" width="6" height="6" transform="rotate(45 22 7)" fill="#f7d47f" stroke="#3a2613" stroke-width="2"/>
+  </svg>`,
+  4,
+  27,
+  'crosshair',
+);
 type DevEditTarget = 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon' | 'perspective';
 type DevPerspectiveField = 'farY' | 'nearY' | 'farScale' | 'nearScale';
+type SentenceParts = {
+  prefix: string;
+  target?: string;
+  connector?: string;
+  secondaryTarget?: string;
+  muted?: boolean;
+};
 const DEV_TARGETS: Array<{ value: DevEditTarget; label: string; key: string }> = [
   { value: 'bounds', label: 'Hotspot', key: '1' },
   { value: 'spriteBounds', label: 'Sprite', key: '2' },
@@ -309,6 +349,12 @@ async function bootstrap(): Promise<void> {
       selectedHotspotId = null;
       changed = true;
     }
+    if (!changed && target.dataset.devAction === 'add-hotspot') {
+      changed = addHotspot(actor.getSnapshot().context);
+    }
+    if (!changed && target.dataset.devAction === 'edit-hotspot-description') {
+      changed = editSelectedHotspotDescription(actor.getSnapshot().context);
+    }
     if (changed) {
       const snapshot = actor.getSnapshot();
       renderUi(snapshot.context, snapshot.matches('dialogue'));
@@ -557,7 +603,6 @@ async function bootstrap(): Promise<void> {
       walkablePolygon: room.walkablePolygon,
       debugHotspots: debugHotspots || devMode,
       flags: context.flags,
-      hoveredHotspotId: context.hoveredHotspotId,
       devEditor: {
         enabled: devMode,
         selectedHotspotId,
@@ -686,11 +731,12 @@ async function bootstrap(): Promise<void> {
       dialogueText.textContent = context.dialogueLines[context.dialogueIndex] ?? '';
     }
 
-    sentenceLine.textContent = buildSentenceLine(context, context.hoveredHotspotId, hoveredWalkableArea);
+    const sentence = buildSentenceLine(context, context.hoveredHotspotId, hoveredWalkableArea);
+    sentenceLine.innerHTML = renderSentenceLineHtml(sentence);
     if (devMode) {
-      canvas.style.cursor = 'crosshair';
+      canvas.style.cursor = CURSOR_DEV;
     } else {
-      canvas.style.cursor = context.hoveredHotspotId || hoveredWalkableArea ? 'pointer' : 'default';
+      canvas.style.cursor = context.hoveredHotspotId || hoveredWalkableArea ? CURSOR_INTERACT : CURSOR_IDLE;
     }
   }
 
@@ -730,6 +776,7 @@ async function bootstrap(): Promise<void> {
     const selectedStatus = hotspot
       ? `<span class="dev-status"><span class="dev-status-dot"></span>Selected: ${hotspot.id}</span>`
       : '<span class="dev-status muted">Selected: none</span>';
+    const selectedDescription = hotspot?.description?.trim() ? hotspot.description.trim() : '(no description)';
     const targetButtons = DEV_TARGETS.map((option) => {
       const active = option.value === devEditTarget ? 'active' : '';
       return `<button type="button" class="dev-chip ${active}" data-dev-target="${option.value}">${option.label} [${option.key}]</button>`;
@@ -745,6 +792,8 @@ async function bootstrap(): Promise<void> {
         <span class="dev-label">Selection</span>
         ${selectedStatus}
         <button type="button" class="dev-chip" data-dev-action="clear-selection">Clear</button>
+        <button type="button" class="dev-chip" data-dev-action="add-hotspot">Add hotspot</button>
+        <button type="button" class="dev-chip ${hotspot ? '' : 'muted'}" data-dev-action="edit-hotspot-description">Edit description</button>
       </div>
       <div class="dev-row">
         <span class="dev-label">Edit Target</span>
@@ -766,20 +815,26 @@ async function bootstrap(): Promise<void> {
     const line1 = `DEV EDITOR (F3): ${context.currentRoomId}`;
     const line2 = `Target [1/2/3/4/5]: ${devEditTarget}`;
     const line3 = hotspot ? `Selected: ${hotspot.id}` : 'Selected: none';
-    const line4 = `Actor size +/-: ${actorSize.width}x${actorSize.height}`;
-    const line5 = `Actor render scale: ${getPerspectiveScale(room ?? rooms.room1, actorPosition.y).toFixed(2)}x`;
-    const line6 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
-    const line7 = `Perspective field [Q/W/E/R]: ${devPerspectiveField}`;
-    const line8 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
-    const line9 = 'Move: arrows (Shift=5px) | Rect size: [ ] and ; \'';
-    const line10 = 'Polygon mode: click add, Shift+click undo, Ctrl+click clear';
-    const line11 = 'Copy room JSON: C or button';
-    devInfo.textContent = [line1, line2, line3, line4, line5, line6, line7, line8, line9, line10, line11].join('\n');
+    const line4 = `Description: ${selectedDescription}`;
+    const line5 = `Actor size +/-: ${actorSize.width}x${actorSize.height}`;
+    const line6 = `Actor render scale: ${getPerspectiveScale(room ?? rooms.room1, actorPosition.y).toFixed(2)}x`;
+    const line7 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
+    const line8 = `Perspective field [Q/W/E/R]: ${devPerspectiveField}`;
+    const line9 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
+    const line10 = 'Move: arrows (Shift=5px) | Rect size: [ ] and ; \'';
+    const line11 = 'Polygon mode: click add, Shift+click undo, Ctrl+click clear';
+    const line12 = 'Copy room JSON: C or button';
+    devInfo.textContent = [line1, line2, line3, line4, line5, line6, line7, line8, line9, line10, line11, line12].join('\n');
   }
 
-  function buildSentenceLine(context: GameContext, hoveredHotspotId: string | null, hoverWalkable: boolean): string {
+  function buildSentenceLine(context: GameContext, hoveredHotspotId: string | null, hoverWalkable: boolean): SentenceParts {
     if (devMode) {
-      return 'Dev editor active (F3): click hotspot, then move/resize with keyboard.';
+      return {
+        prefix: 'Dev editor active (F3)',
+        connector: '-',
+        secondaryTarget: 'click hotspot, then move or resize with keyboard',
+        muted: true,
+      };
     }
 
     const room = rooms[context.currentRoomId];
@@ -788,25 +843,47 @@ async function bootstrap(): Promise<void> {
       context.inventory.find((item) => item.id === context.selectedInventoryItemId)?.name ?? context.selectedInventoryItemId;
 
     if (hotspotName && context.selectedVerb === null) {
-      return `Walk to ${hotspotName}`;
+      return {
+        prefix: 'Walk to',
+        target: hotspotName,
+      };
     }
     if (!hotspotName && context.selectedVerb === null && hoverWalkable) {
-      return 'Walk to';
+      return {
+        prefix: 'Walk to',
+      };
     }
 
     if (context.selectedVerb === 'USE' && selectedItemName && hotspotName) {
-      return `Use ${selectedItemName} with ${hotspotName}`;
+      return {
+        prefix: 'Use',
+        target: selectedItemName,
+        connector: 'with',
+        secondaryTarget: hotspotName,
+      };
     }
 
     if (context.selectedVerb && hotspotName) {
-      return `${verbLabel(context.selectedVerb)} ${hotspotName}`;
+      return {
+        prefix: verbActionPrefix(context.selectedVerb),
+        target: hotspotName,
+      };
     }
 
     if (context.selectedVerb === 'USE' && !context.selectedInventoryItemId) {
-      return 'Use ... with ...';
+      return {
+        prefix: 'Use',
+        target: '...',
+        connector: 'with',
+        secondaryTarget: '...',
+        muted: true,
+      };
     }
 
-    return 'Walk around.';
+    return {
+      prefix: 'Walk around',
+      muted: true,
+    };
   }
 
   function getVisibleHotspots(context: GameContext): Hotspot[] {
@@ -860,6 +937,69 @@ async function bootstrap(): Promise<void> {
     rect.y += dy;
     rect.w = Math.max(1, rect.w + dw);
     rect.h = Math.max(1, rect.h + dh);
+  }
+
+  function addHotspot(context: GameContext): boolean {
+    const room = rooms[context.currentRoomId];
+    if (!room) {
+      return false;
+    }
+
+    const suggestedId = nextHotspotId(room);
+    const rawId = window.prompt('Hotspot id (unique):', suggestedId);
+    if (rawId === null) {
+      return false;
+    }
+    const normalizedId = normalizeHotspotId(rawId);
+    if (!normalizedId) {
+      return false;
+    }
+    const id = uniqueHotspotId(room, normalizedId);
+
+    const nameInput = window.prompt('Hotspot name:', titleFromId(id));
+    if (nameInput === null) {
+      return false;
+    }
+    const name = nameInput.trim() || titleFromId(id);
+
+    const descriptionInput = window.prompt('LOOK description (optional):', `It is ${withArticle(name)}.`);
+    if (descriptionInput === null) {
+      return false;
+    }
+    const description = descriptionInput.trim() || undefined;
+
+    const defaultWidth = 24;
+    const defaultHeight = 24;
+    const x = clamp(Math.round(actorPosition.x - defaultWidth / 2), 0, room.width - defaultWidth);
+    const y = clamp(Math.round(actorPosition.y - defaultHeight), 0, room.height - defaultHeight);
+
+    room.hotspots.push({
+      id,
+      name,
+      description,
+      bounds: { x, y, w: defaultWidth, h: defaultHeight },
+      walkTarget: { x: Math.round(actorPosition.x), y: Math.round(actorPosition.y) },
+    });
+    selectedHotspotId = id;
+    devEditTarget = 'bounds';
+    return true;
+  }
+
+  function editSelectedHotspotDescription(context: GameContext): boolean {
+    const room = rooms[context.currentRoomId];
+    if (!room || !selectedHotspotId) {
+      return false;
+    }
+    const hotspot = room.hotspots.find((spot) => spot.id === selectedHotspotId);
+    if (!hotspot) {
+      return false;
+    }
+    const input = window.prompt('Hotspot LOOK description (leave empty to clear):', hotspot.description ?? '');
+    if (input === null) {
+      return false;
+    }
+    hotspot.description = input.trim() || undefined;
+    return true;
   }
 
   async function copyCurrentRoomHotspots(context: GameContext): Promise<void> {
@@ -1251,6 +1391,47 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function nextHotspotId(room: { hotspots: Hotspot[] }): string {
+  let index = room.hotspots.length + 1;
+  while (room.hotspots.some((spot) => spot.id === `hotspot_${index}`)) {
+    index += 1;
+  }
+  return `hotspot_${index}`;
+}
+
+function uniqueHotspotId(room: { hotspots: Hotspot[] }, baseId: string): string {
+  let candidate = baseId;
+  let suffix = 2;
+  while (room.hotspots.some((spot) => spot.id === candidate)) {
+    candidate = `${baseId}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function normalizeHotspotId(rawId: string): string {
+  const normalized = rawId.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+  return normalized;
+}
+
+function titleFromId(id: string): string {
+  return id
+    .split('_')
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function withArticle(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return 'an object';
+  }
+  const first = trimmed.charAt(0).toLowerCase();
+  const article = 'aeiou'.includes(first) ? 'an' : 'a';
+  return `${article} ${trimmed}`;
+}
+
 function inventoryIconHtml(itemId: string, assets: AssetStore): string {
   if (itemId === 'key') {
     return `<img class="inventory-icon" src="${assets.getImageUrl('inventoryKey')}" alt="">`;
@@ -1266,6 +1447,49 @@ function verbLabel(verb: Verb): string {
     default:
       return `${verb.charAt(0)}${verb.slice(1).toLowerCase()}`;
   }
+}
+
+function verbActionPrefix(verb: Verb): string {
+  switch (verb) {
+    case 'LOOK':
+      return 'Look at';
+    case 'TALK':
+      return 'Talk to';
+    case 'PICK_UP':
+      return 'Pick up';
+    case 'OPEN':
+      return 'Open';
+    case 'USE':
+      return 'Use';
+    default:
+      return verbLabel(verb);
+  }
+}
+
+function renderSentenceLineHtml(parts: SentenceParts): string {
+  const classes = parts.muted ? 'sentence muted' : 'sentence';
+  const chunks: string[] = [`<span class="${classes}">`];
+  chunks.push(`<span class="sentence-prefix">${escapeHtml(parts.prefix)}</span>`);
+  if (parts.target) {
+    chunks.push(`<span class="sentence-target">${escapeHtml(parts.target)}</span>`);
+  }
+  if (parts.connector) {
+    chunks.push(`<span class="sentence-connector">${escapeHtml(parts.connector)}</span>`);
+  }
+  if (parts.secondaryTarget) {
+    chunks.push(`<span class="sentence-target">${escapeHtml(parts.secondaryTarget)}</span>`);
+  }
+  chunks.push('</span>');
+  return chunks.join(' ');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function getRequiredElement<T extends HTMLElement>(id: string): T {
@@ -1323,6 +1547,13 @@ function isDevEditTarget(value: string | undefined): value is DevEditTarget {
 
 function isDevPerspectiveField(value: string | undefined): value is DevPerspectiveField {
   return value === 'farY' || value === 'nearY' || value === 'farScale' || value === 'nearScale';
+}
+
+function makeCursorCss(svg: string, hotspotX: number, hotspotY: number, fallback: 'default' | 'pointer' | 'crosshair'): string {
+  const encodedSvg = encodeURIComponent(svg)
+    .replace(/%0A/g, '')
+    .replace(/%20+/g, ' ');
+  return `url("data:image/svg+xml,${encodedSvg}") ${hotspotX} ${hotspotY}, ${fallback}`;
 }
 
 

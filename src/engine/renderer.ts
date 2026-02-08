@@ -18,7 +18,6 @@ export interface RenderParams {
   walkablePolygon?: { x: number; y: number }[];
   debugHotspots: boolean;
   flags: Record<string, boolean>;
-  hoveredHotspotId: string | null;
   devEditor: {
     enabled: boolean;
     selectedHotspotId: string | null;
@@ -56,7 +55,7 @@ export class Renderer {
   }
 
   render(params: RenderParams): void {
-    const { room, actor, hotspots, walkablePolygon, debugHotspots, flags, hoveredHotspotId, devEditor } = params;
+    const { room, actor, hotspots, walkablePolygon, debugHotspots, flags, devEditor } = params;
     this.ctx.imageSmoothingEnabled = false;
 
     if (room.id === 'room1') {
@@ -68,12 +67,6 @@ export class Renderer {
 
     for (const hotspot of hotspots) {
       this.drawHotspotSprite(hotspot, flags);
-
-      if (hoveredHotspotId === hotspot.id) {
-        this.ctx.strokeStyle = '#ffe66d';
-        this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(hotspot.bounds.x, hotspot.bounds.y, hotspot.bounds.w, hotspot.bounds.h);
-      }
 
       if (debugHotspots) {
         this.ctx.strokeStyle = '#0b0b0b';
@@ -161,27 +154,28 @@ export class Renderer {
   }
 
   private drawHotspotSprite(hotspot: Hotspot, flags: Record<string, boolean>): void {
-    const spriteBounds = hotspot.spriteBounds ?? hotspot.bounds;
-
-    switch (hotspot.id) {
-      case 'door': {
-        const sprite = flags.doorOpen ? this.assets.getImage('doorOpen') : this.assets.getImage('doorClosed');
-        this.ctx.drawImage(sprite, spriteBounds.x, spriteBounds.y, spriteBounds.w, spriteBounds.h);
-        return;
-      }
-      case 'sign': {
-        const sprite = this.assets.getImage('sign');
-        this.ctx.drawImage(sprite, spriteBounds.x, spriteBounds.y, spriteBounds.w, spriteBounds.h);
-        return;
-      }
-      case 'key': {
-        const sprite = this.assets.getImage('key');
-        this.ctx.drawImage(sprite, spriteBounds.x, spriteBounds.y, spriteBounds.w, spriteBounds.h);
-        return;
-      }
-      default:
-        return;
+    if (!hotspot.sprite) {
+      return;
     }
+    const spriteBounds = hotspot.spriteBounds ?? hotspot.bounds;
+    let imageId = hotspot.sprite.defaultImageId ?? null;
+    for (const variant of hotspot.sprite.flagVariants ?? []) {
+      const isTrue = Boolean(flags[variant.flag]);
+      if (isTrue && variant.whenTrueImageId) {
+        imageId = variant.whenTrueImageId;
+      }
+      if (!isTrue && variant.whenFalseImageId) {
+        imageId = variant.whenFalseImageId;
+      }
+    }
+    if (!imageId) {
+      return;
+    }
+    const sprite = this.assets.getOptionalImage(imageId);
+    if (!sprite) {
+      return;
+    }
+    this.ctx.drawImage(sprite, spriteBounds.x, spriteBounds.y, spriteBounds.w, spriteBounds.h);
   }
 
   private drawDevOverlay(

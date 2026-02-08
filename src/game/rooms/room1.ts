@@ -1,94 +1,16 @@
-﻿import type { RoomDefinition } from '../types';
+import room1Json from './room1.json';
+import room2Json from './room2.json';
+import type {
+  Hotspot,
+  HotspotSpriteConfig,
+  HotspotSpriteFlagVariant,
+  Point,
+  Rect,
+  RoomDefinition,
+} from '../types';
 
-export const room1: RoomDefinition = {
-  id: 'room1',
-  name: 'Crossroads',
-  width: 320,
-  height: 180,
-  backgroundColor: '#264653',
-  perspective: {
-    // Smaller near the horizon, larger near the bottom of the screen.
-    farY: 70,
-    nearY: 179,
-    farScale: 0.32,
-    nearScale: 1,
-  },
-  walkablePolygon: [
-    { x: 71, y: 179 },
-    { x: 62, y: 160 },
-    { x: 30, y: 151 },
-    { x: 20, y: 136 },
-    { x: 64, y: 143 },
-    { x: 96, y: 140 },
-    { x: 116, y: 135 },
-    { x: 134, y: 128 },
-    { x: 134, y: 124 },
-    { x: 113, y: 112 },
-    { x: 96, y: 104 },
-    { x: 97, y: 91 },
-    { x: 115, y: 87 },
-    { x: 125, y: 83 },
-    { x: 132, y: 79 },
-    { x: 124, y: 73 },
-    { x: 130, y: 71 },
-    { x: 139, y: 73 },
-    { x: 146, y: 77 },
-    { x: 141, y: 83 },
-    { x: 131, y: 91 },
-    { x: 128, y: 93 },
-    { x: 140, y: 102 },
-    { x: 171, y: 112 },
-    { x: 195, y: 118 },
-    { x: 228, y: 114 },
-    { x: 283, y: 112 },
-    { x: 281, y: 123 },
-    { x: 255, y: 136 },
-    { x: 250, y: 142 },
-    { x: 230, y: 147 },
-    { x: 210, y: 155 },
-    { x: 195, y: 170 },
-    { x: 196, y: 179 },
-  ],
-  hotspots: [
-    {
-      id: 'door',
-      name: 'door',
-      bounds: { x: 232, y: 50, w: 55, h: 62 },
-      spriteBounds: { x: 215, y: 39, w: 83, h: 96 },
-      walkTarget: { x: 240, y: 117 },
-    },
-    {
-      id: 'sign',
-      name: 'sign',
-      bounds: { x: 33, y: 64, w: 57, h: 32 },
-      spriteBounds: { x: 19, y: 50, w: 85, h: 108 },
-      walkTarget: { x: 53, y: 147 },
-    },
-    {
-      id: 'key',
-      name: 'key',
-      bounds: { x: 201, y: 163, w: 22, h: 15 },
-      spriteBounds: { x: 200, y: 158, w: 24, h: 30 },
-      walkTarget: { x: 198, y: 172 },
-    },
-  ],
-};
-
-export const room2: RoomDefinition = {
-  id: 'room2',
-  name: 'Beyond Door',
-  width: 320,
-  height: 180,
-  backgroundColor: '#1d3557',
-  perspective: {
-    farY: 70,
-    nearY: 179,
-    farScale: 0.72,
-    nearScale: 1,
-  },
-  hotspots: [],
-  overlayText: 'Room 2 placeholder: You made it!',
-};
+export const room1: RoomDefinition = toRoomDefinition(room1Json);
+export const room2: RoomDefinition = toRoomDefinition(room2Json);
 
 export const rooms: Record<string, RoomDefinition> = {
   room1,
@@ -99,10 +21,127 @@ export function isHotspotVisible(roomId: string, hotspotId: string, flags: Recor
   if (roomId !== 'room1') {
     return true;
   }
-
   if (hotspotId === 'key' && flags.keyTaken) {
     return false;
   }
-
   return true;
+}
+
+function toRoomDefinition(raw: unknown): RoomDefinition {
+  if (!isObject(raw)) {
+    throw new Error('Invalid room config: expected object');
+  }
+  if (!isString(raw.id) || !isString(raw.name) || !isString(raw.backgroundColor)) {
+    throw new Error('Invalid room config: id/name/backgroundColor must be strings');
+  }
+  if (!isNumber(raw.width) || !isNumber(raw.height)) {
+    throw new Error(`Invalid room config (${raw.id}): width/height must be numbers`);
+  }
+  if (!Array.isArray(raw.hotspots)) {
+    throw new Error(`Invalid room config (${raw.id}): hotspots must be an array`);
+  }
+
+  return {
+    id: raw.id,
+    name: raw.name,
+    width: raw.width,
+    height: raw.height,
+    backgroundColor: raw.backgroundColor,
+    hotspots: raw.hotspots.map(toHotspot),
+    walkablePolygon: Array.isArray(raw.walkablePolygon) ? raw.walkablePolygon.map(toPoint) : undefined,
+    perspective: isObject(raw.perspective)
+      ? {
+          farY: toNumber(raw.perspective.farY, 'perspective.farY'),
+          nearY: toNumber(raw.perspective.nearY, 'perspective.nearY'),
+          farScale: toNumber(raw.perspective.farScale, 'perspective.farScale'),
+          nearScale: toNumber(raw.perspective.nearScale, 'perspective.nearScale'),
+        }
+      : undefined,
+    overlayText: isString(raw.overlayText) ? raw.overlayText : undefined,
+  };
+}
+
+function toHotspot(raw: unknown): Hotspot {
+  if (!isObject(raw) || !isString(raw.id) || !isString(raw.name)) {
+    throw new Error('Invalid hotspot: expected id and name');
+  }
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: isString(raw.description) ? raw.description : undefined,
+    bounds: toRect(raw.bounds, 'bounds'),
+    spriteBounds: raw.spriteBounds ? toRect(raw.spriteBounds, 'spriteBounds') : undefined,
+    sprite: raw.sprite ? toHotspotSpriteConfig(raw.sprite) : undefined,
+    walkTarget: toPoint(raw.walkTarget),
+  };
+}
+
+function toHotspotSpriteConfig(raw: unknown): HotspotSpriteConfig {
+  if (!isObject(raw)) {
+    throw new Error('Invalid hotspot sprite config: expected object');
+  }
+  const config: HotspotSpriteConfig = {};
+  if (isString(raw.defaultImageId) && raw.defaultImageId.trim().length > 0) {
+    config.defaultImageId = raw.defaultImageId;
+  }
+  if (Array.isArray(raw.flagVariants)) {
+    config.flagVariants = raw.flagVariants.map(toHotspotSpriteFlagVariant);
+  }
+  return config;
+}
+
+function toHotspotSpriteFlagVariant(raw: unknown): HotspotSpriteFlagVariant {
+  if (!isObject(raw) || !isString(raw.flag) || raw.flag.trim().length === 0) {
+    throw new Error('Invalid hotspot sprite flag variant: expected non-empty "flag"');
+  }
+  return {
+    flag: raw.flag,
+    whenTrueImageId: isString(raw.whenTrueImageId) && raw.whenTrueImageId.trim().length > 0
+      ? raw.whenTrueImageId
+      : undefined,
+    whenFalseImageId: isString(raw.whenFalseImageId) && raw.whenFalseImageId.trim().length > 0
+      ? raw.whenFalseImageId
+      : undefined,
+  };
+}
+
+function toRect(raw: unknown, field: string): Rect {
+  if (!isObject(raw)) {
+    throw new Error(`Invalid hotspot ${field}: expected object`);
+  }
+  return {
+    x: toNumber(raw.x, `${field}.x`),
+    y: toNumber(raw.y, `${field}.y`),
+    w: toNumber(raw.w, `${field}.w`),
+    h: toNumber(raw.h, `${field}.h`),
+  };
+}
+
+function toPoint(raw: unknown): Point {
+  if (!isObject(raw)) {
+    throw new Error('Invalid point: expected object');
+  }
+  return {
+    x: toNumber(raw.x, 'point.x'),
+    y: toNumber(raw.y, 'point.y'),
+  };
+}
+
+function toNumber(value: unknown, field: string): number {
+  if (!isNumber(value)) {
+    throw new Error(`Invalid value for ${field}: expected number`);
+  }
+  return value;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }

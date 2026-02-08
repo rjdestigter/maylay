@@ -1,0 +1,15 @@
+{
+  "id": "room2",
+  "name": "Beyond Door",
+  "width": 320,
+  "height": 180,
+  "backgroundColor": "#1d3557",
+  "perspective": {
+    "farY": 70,
+    "nearY": 179,
+    "farScale": 0.72,
+    "nearScale": 1
+  },
+  "hotspots": [],
+  "overlayText": "Room 2 placeholder: You made it!"
+}

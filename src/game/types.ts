@@ -15,9 +15,22 @@ export interface Rect {
 export interface Hotspot {
   id: string;
   name: string;
+  description?: string;
   bounds: Rect;
   spriteBounds?: Rect;
+  sprite?: HotspotSpriteConfig;
   walkTarget: Point;
+}
+
+export interface HotspotSpriteConfig {
+  defaultImageId?: string;
+  flagVariants?: HotspotSpriteFlagVariant[];
+}
+
+export interface HotspotSpriteFlagVariant {
+  flag: string;
+  whenTrueImageId?: string;
+  whenFalseImageId?: string;
 }
 
 export interface RoomDefinition {

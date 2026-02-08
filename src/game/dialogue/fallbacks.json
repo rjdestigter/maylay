@@ -1,0 +1,37 @@
+{
+  "lookDefault": [
+    "You study it intensely. It studies right back by doing absolutely nothing.",
+    "It looks important, in the way rocks sometimes look important.",
+    "You squint. It remains committed to being mysterious."
+  ],
+  "talkDefault": [
+    "You deliver a heartfelt speech. The audience remains imaginary.",
+    "You try small talk. It chooses smaller silence.",
+    "You ask a thoughtful question. Silence gives an equally thoughtful answer."
+  ],
+  "pickUpDefault": [
+    "You can't pick up the {hotspot}. Physics has filed an objection.",
+    "You give the {hotspot} a tug. It gives your shoulder a warning.",
+    "The {hotspot} appears to be permanently employed by gravity."
+  ],
+  "openDefault": [
+    "You can't open the {hotspot}. It has no obvious \"open\" setting.",
+    "You hunt for hinges on the {hotspot}. The hinges remain mythical.",
+    "You attempt the dramatic reveal. The {hotspot} declines to participate."
+  ],
+  "useWithoutItemDefault": [
+    "Use what? Your winning personality is not in inventory.",
+    "You are currently equipped with confidence and empty pockets.",
+    "Great plan. Missing tool."
+  ],
+  "useDefault": [
+    "Using {item} on {hotspot} mostly builds character.",
+    "{item} and {hotspot} meet briefly, then agree to stay strangers.",
+    "You combine {item} with {hotspot}. The universe remains unconvinced."
+  ],
+  "genericDefault": [
+    "Bold strategy. Absolutely no effect.",
+    "That felt important. It was not.",
+    "You try it. Reality refuses the patch."
+  ]
+}

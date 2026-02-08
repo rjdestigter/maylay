@@ -1,0 +1,42 @@
+{
+  "look": {
+    "doorClosed": "A sturdy door with an old lock.",
+    "doorOpen": "An open door. Adventure awaits.",
+    "sign": "The sign reads: \"No random behavior beyond this point.\"",
+    "keyPresent": "A brass key lies on the ground.",
+    "keyTaken": "It was here a second ago."
+  },
+  "talk": {
+    "door": "The door remains politely silent.",
+    "sign": "You greet the sign. It ignores you with confidence.",
+    "key": "You ask the key for life advice. It gives you the silent treatment."
+  },
+  "pickUp": {
+    "keySuccess": "You pick up the brass key.",
+    "keyAlreadyTaken": "You already picked up the key.",
+    "doorFailure": "You'd need a crane, a permit, and probably a better idea.",
+    "signFailure": "The sign is deeply rooted in its career."
+  },
+  "use": {
+    "doorOpenNoItemEnter": "You step through the open door.",
+    "doorNeedKeyFirst": "You need to pick up the key first.",
+    "doorAlreadyUnlocked": "The door is already unlocked.",
+    "doorUnlockSuccess": "The key turns with a click. The door swings open.",
+    "doorKeyMisaligned": "You wave the key near the door dramatically. The lock requests actual alignment.",
+    "doorGeneric": "You try {item} on the door. The door remains unconvinced.",
+    "signKey": "You scratch the sign with the key. The sign files a complaint.",
+    "signGeneric": "You try {item} on the sign. It still refuses to become useful.",
+    "keyGeneric": "You try {item} on the key. They do not form a meaningful friendship.",
+    "keyOnKey": "You tap the key with itself. A breakthrough in advanced key technology.",
+    "genericKeyItem": "You poke the {hotspot} with the key. No secret mechanism reveals itself.",
+    "doorWithoutItem": "Use what on the door? Your optimism jiggles the handle, but not the lock.",
+    "signWithoutItem": "Use what on the sign? Stern eye contact is not a tool.",
+    "keyWithoutItem": "Use what on the key? You are currently holding exactly zero useful things."
+  },
+  "open": {
+    "lockedDoor": "It's locked.",
+    "enterOpenDoor": "You step through the open door.",
+    "signFailure": "You try to open the sign. It remains a sign.",
+    "keyFailure": "You open your hand dramatically. The key is unimpressed."
+  }
+}
