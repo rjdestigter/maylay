@@ -1,7 +1,7 @@
 import fallbackJson from './dialogue/fallbacks.json';
 import interactionsJson from './dialogue/interactions.json';
 import type { GameContext } from './stateMachine';
-import type { Hotspot, ScriptResult } from './types';
+import type { Hotspot, ScriptResult, Verb } from './types';
 
 type FallbackConfig = {
   lookDefault: string[];
@@ -149,14 +149,19 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
     if (isSelf) {
       return { dialogueLines: ['A daring adventurer with excellent taste in verbs.'] };
     }
-    return { dialogueLines: [lookLineFor(hotspot, context.flags)] };
+    return {
+      dialogueLines: [lookLineFor(hotspot, context.flags)],
+      setFlags: {
+        [inspectedFlagName(hotspot)]: true,
+      },
+    };
   }
 
   if (verb === 'TALK') {
     if (isSelf) {
       return { dialogueLines: ['You give yourself a pep talk. The reviews are mixed but encouraging.'] };
     }
-    return { dialogueLines: [talkLineFor(hotspot.id)] };
+    return { dialogueLines: [talkLineFor(hotspot, context.flags)] };
   }
 
   if (verb === 'PICK_UP') {
@@ -164,7 +169,7 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
       return { dialogueLines: ['You attempt to pick yourself up. Philosophically successful.'] };
     }
     if (hotspot.id !== 'key') {
-      return { dialogueLines: [pickUpFailureLine(hotspot.id, hotspot.name)] };
+      return { dialogueLines: [pickUpFailureLine(hotspot, context.flags)] };
     }
 
     if (context.flags.keyTaken) {
@@ -193,6 +198,10 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
     }
 
     if (selectedItem === null) {
+      const stateUseLine = stateDialogueLine(hotspot, 'USE', context.flags);
+      if (stateUseLine) {
+        return { dialogueLines: [stateUseLine] };
+      }
       return { dialogueLines: [useWithoutItemLine(hotspot.id)] };
     }
 
@@ -207,7 +216,7 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
 
       return {
         dialogueLines: [INTERACTIONS.use.doorUnlockSuccess],
-        setFlags: { doorOpen: true },
+        setFlags: { doorOpen: true, doorLocked: false },
         clearSelectedInventory: true,
       };
     }
@@ -220,11 +229,12 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
       return { dialogueLines: ['You are already open-minded. Physically opening is not recommended.'] };
     }
     if (hotspot.id !== 'door') {
-      return { dialogueLines: [openFailureLine(hotspot.id, hotspot.name)] };
+      return { dialogueLines: [openFailureLine(hotspot, context.flags)] };
     }
 
     if (!context.flags.doorOpen) {
-      return { dialogueLines: [INTERACTIONS.open.lockedDoor] };
+      const stateOpenLine = stateDialogueLine(hotspot, 'OPEN', context.flags);
+      return { dialogueLines: [stateOpenLine ?? INTERACTIONS.open.lockedDoor] };
     }
 
     return {
@@ -237,6 +247,10 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
 }
 
 function lookLineFor(hotspot: Hotspot, flags: Record<string, boolean>): string {
+  const stateLine = stateDialogueLine(hotspot, 'LOOK', flags);
+  if (stateLine) {
+    return stateLine;
+  }
   if (hotspot.description && hotspot.description.trim().length > 0) {
     return hotspot.description.trim();
   }
@@ -253,7 +267,12 @@ function lookLineFor(hotspot: Hotspot, flags: Record<string, boolean>): string {
   }
 }
 
-function talkLineFor(hotspotId: string): string {
+function talkLineFor(hotspot: Hotspot, flags: Record<string, boolean>): string {
+  const stateLine = stateDialogueLine(hotspot, 'TALK', flags);
+  if (stateLine) {
+    return stateLine;
+  }
+  const hotspotId = hotspot.id;
   switch (hotspotId) {
     case 'door':
       return INTERACTIONS.talk.door;
@@ -266,7 +285,13 @@ function talkLineFor(hotspotId: string): string {
   }
 }
 
-function pickUpFailureLine(hotspotId: string, hotspotName: string): string {
+function pickUpFailureLine(hotspot: Hotspot, flags: Record<string, boolean>): string {
+  const stateLine = stateDialogueLine(hotspot, 'PICK_UP', flags);
+  if (stateLine) {
+    return stateLine;
+  }
+  const hotspotId = hotspot.id;
+  const hotspotName = hotspot.name;
   switch (hotspotId) {
     case 'door':
       return INTERACTIONS.pickUp.doorFailure;
@@ -277,7 +302,13 @@ function pickUpFailureLine(hotspotId: string, hotspotName: string): string {
   }
 }
 
-function openFailureLine(hotspotId: string, hotspotName: string): string {
+function openFailureLine(hotspot: Hotspot, flags: Record<string, boolean>): string {
+  const stateLine = stateDialogueLine(hotspot, 'OPEN', flags);
+  if (stateLine) {
+    return stateLine;
+  }
+  const hotspotId = hotspot.id;
+  const hotspotName = hotspot.name;
   switch (hotspotId) {
     case 'sign':
       return INTERACTIONS.open.signFailure;
@@ -429,4 +460,40 @@ function stringOrDefault(source: unknown, key: string, fallback: string): string
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function stateDialogueLine(hotspot: Hotspot, verb: Verb, flags: Record<string, boolean>): string | null {
+  const stateId = resolveHotspotStateId(hotspot, flags);
+  if (!stateId) {
+    return null;
+  }
+  const stateVariant = hotspot.states?.[stateId];
+  const byVerb = stateVariant?.dialogue?.[verb];
+  if (byVerb && byVerb.trim().length > 0) {
+    return byVerb.trim();
+  }
+  const fallback = stateVariant?.dialogue?.DEFAULT;
+  return fallback && fallback.trim().length > 0 ? fallback.trim() : null;
+}
+
+function resolveHotspotStateId(hotspot: Hotspot, flags: Record<string, boolean>): keyof NonNullable<Hotspot['states']> | null {
+  const stateOrder: Array<keyof NonNullable<Hotspot['states']>> = ['broken', 'open', 'locked', 'inspected'];
+  for (const state of stateOrder) {
+    if (!hotspot.states?.[state]) {
+      continue;
+    }
+    const flagName = hotspot.stateFlags?.[state] ?? defaultStateFlagName(hotspot.id, state);
+    if (flags[flagName]) {
+      return state;
+    }
+  }
+  return null;
+}
+
+function defaultStateFlagName(hotspotId: string, state: 'locked' | 'open' | 'broken' | 'inspected'): string {
+  return `${hotspotId}${state.charAt(0).toUpperCase()}${state.slice(1)}`;
+}
+
+function inspectedFlagName(hotspot: Hotspot): string {
+  return hotspot.stateFlags?.inspected ?? defaultStateFlagName(hotspot.id, 'inspected');
 }

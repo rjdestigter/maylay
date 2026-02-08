@@ -2,6 +2,9 @@ import room1Json from './room1.json';
 import room2Json from './room2.json';
 import type {
   Hotspot,
+  HotspotStateFlagMap,
+  HotspotStatesConfig,
+  HotspotStateVariant,
   HotspotSpriteConfig,
   HotspotSpriteFlagVariant,
   Point,
@@ -72,6 +75,8 @@ function toHotspot(raw: unknown): Hotspot {
     bounds: toRect(raw.bounds, 'bounds'),
     spriteBounds: raw.spriteBounds ? toRect(raw.spriteBounds, 'spriteBounds') : undefined,
     sprite: raw.sprite ? toHotspotSpriteConfig(raw.sprite) : undefined,
+    stateFlags: raw.stateFlags ? toHotspotStateFlagMap(raw.stateFlags) : undefined,
+    states: raw.states ? toHotspotStatesConfig(raw.states) : undefined,
     walkTarget: toPoint(raw.walkTarget),
   };
 }
@@ -103,6 +108,53 @@ function toHotspotSpriteFlagVariant(raw: unknown): HotspotSpriteFlagVariant {
       ? raw.whenFalseImageId
       : undefined,
   };
+}
+
+function toHotspotStateFlagMap(raw: unknown): HotspotStateFlagMap {
+  if (!isObject(raw)) {
+    throw new Error('Invalid hotspot stateFlags: expected object');
+  }
+  return {
+    locked: toOptionalNonEmptyString(raw.locked),
+    open: toOptionalNonEmptyString(raw.open),
+    broken: toOptionalNonEmptyString(raw.broken),
+    inspected: toOptionalNonEmptyString(raw.inspected),
+  };
+}
+
+function toHotspotStatesConfig(raw: unknown): HotspotStatesConfig {
+  if (!isObject(raw)) {
+    throw new Error('Invalid hotspot states: expected object');
+  }
+  return {
+    locked: raw.locked ? toHotspotStateVariant(raw.locked) : undefined,
+    open: raw.open ? toHotspotStateVariant(raw.open) : undefined,
+    broken: raw.broken ? toHotspotStateVariant(raw.broken) : undefined,
+    inspected: raw.inspected ? toHotspotStateVariant(raw.inspected) : undefined,
+  };
+}
+
+function toHotspotStateVariant(raw: unknown): HotspotStateVariant {
+  if (!isObject(raw)) {
+    throw new Error('Invalid hotspot state variant: expected object');
+  }
+  const dialogue = isObject(raw.dialogue) ? toStateDialogue(raw.dialogue) : undefined;
+  return {
+    spriteImageId: toOptionalNonEmptyString(raw.spriteImageId),
+    dialogue,
+  };
+}
+
+function toStateDialogue(raw: Record<string, unknown>): Partial<Record<'LOOK' | 'TALK' | 'PICK_UP' | 'USE' | 'OPEN' | 'DEFAULT', string>> {
+  const dialogue: Partial<Record<'LOOK' | 'TALK' | 'PICK_UP' | 'USE' | 'OPEN' | 'DEFAULT', string>> = {};
+  const keys: Array<'LOOK' | 'TALK' | 'PICK_UP' | 'USE' | 'OPEN' | 'DEFAULT'> = ['LOOK', 'TALK', 'PICK_UP', 'USE', 'OPEN', 'DEFAULT'];
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      dialogue[key] = value;
+    }
+  }
+  return dialogue;
 }
 
 function toRect(raw: unknown, field: string): Rect {
@@ -144,4 +196,12 @@ function isString(value: unknown): value is string {
 
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function toOptionalNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }

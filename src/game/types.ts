@@ -19,6 +19,8 @@ export interface Hotspot {
   bounds: Rect;
   spriteBounds?: Rect;
   sprite?: HotspotSpriteConfig;
+  stateFlags?: HotspotStateFlagMap;
+  states?: HotspotStatesConfig;
   walkTarget: Point;
 }
 
@@ -31,6 +33,25 @@ export interface HotspotSpriteFlagVariant {
   flag: string;
   whenTrueImageId?: string;
   whenFalseImageId?: string;
+}
+
+export interface HotspotStateVariant {
+  spriteImageId?: string;
+  dialogue?: Partial<Record<Verb | 'DEFAULT', string>>;
+}
+
+export interface HotspotStatesConfig {
+  locked?: HotspotStateVariant;
+  open?: HotspotStateVariant;
+  broken?: HotspotStateVariant;
+  inspected?: HotspotStateVariant;
+}
+
+export interface HotspotStateFlagMap {
+  locked?: string;
+  open?: string;
+  broken?: string;
+  inspected?: string;
 }
 
 export interface RoomDefinition {

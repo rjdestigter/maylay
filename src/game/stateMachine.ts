@@ -32,7 +32,9 @@ const initialContext: GameContext = {
   selectedInventoryItemId: null,
   flags: {
     keyTaken: false,
+    doorLocked: true,
     doorOpen: false,
+    doorBroken: false,
   },
   inventory: [],
   pendingInteraction: null,

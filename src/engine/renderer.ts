@@ -158,12 +158,18 @@ export class Renderer {
   }
 
   private drawHotspotSprite(hotspot: Hotspot, flags: Record<string, boolean>): void {
-    if (!hotspot.sprite) {
+    if (!hotspot.sprite && !hotspot.states) {
       return;
     }
+    const spriteConfig = hotspot.sprite;
     const spriteBounds = hotspot.spriteBounds ?? hotspot.bounds;
-    let imageId = hotspot.sprite.defaultImageId ?? null;
-    for (const variant of hotspot.sprite.flagVariants ?? []) {
+    let imageId = spriteConfig?.defaultImageId ?? null;
+    const stateId = resolveHotspotStateId(hotspot, flags);
+    const stateVariant = stateId ? hotspot.states?.[stateId] : undefined;
+    if (stateVariant?.spriteImageId) {
+      imageId = stateVariant.spriteImageId;
+    }
+    for (const variant of spriteConfig?.flagVariants ?? []) {
       const isTrue = Boolean(flags[variant.flag]);
       if (isTrue && variant.whenTrueImageId) {
         imageId = variant.whenTrueImageId;
@@ -359,4 +365,22 @@ export class Renderer {
     this.ctx.lineWidth = 1;
     this.ctx.stroke();
   }
+}
+
+function resolveHotspotStateId(hotspot: Hotspot, flags: Record<string, boolean>): keyof NonNullable<Hotspot['states']> | null {
+  const stateOrder: Array<keyof NonNullable<Hotspot['states']>> = ['broken', 'open', 'locked', 'inspected'];
+  for (const state of stateOrder) {
+    if (!hotspot.states?.[state]) {
+      continue;
+    }
+    const flagName = hotspot.stateFlags?.[state] ?? defaultStateFlagName(hotspot.id, state);
+    if (flags[flagName]) {
+      return state;
+    }
+  }
+  return null;
+}
+
+function defaultStateFlagName(hotspotId: string, state: 'locked' | 'open' | 'broken' | 'inspected'): string {
+  return `${hotspotId}${state.charAt(0).toUpperCase()}${state.slice(1)}`;
 }

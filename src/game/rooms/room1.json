@@ -45,6 +45,43 @@
           }
         ]
       },
+      "stateFlags": {
+        "locked": "doorLocked",
+        "open": "doorOpen",
+        "broken": "doorBroken",
+        "inspected": "doorInspected"
+      },
+      "states": {
+        "locked": {
+          "spriteImageId": "doorClosed",
+          "dialogue": {
+            "LOOK": "The lock is old, stubborn, and very proud of it.",
+            "OPEN": "Locked. Impressively, theatrically locked.",
+            "USE": "The lock politely declines all non-key proposals."
+          }
+        },
+        "open": {
+          "spriteImageId": "doorOpen",
+          "dialogue": {
+            "LOOK": "The door is open, as if inviting trouble.",
+            "OPEN": "It is already open. No encore needed.",
+            "TALK": "You thank the open door. It remains humble."
+          }
+        },
+        "broken": {
+          "spriteImageId": "doorOpen",
+          "dialogue": {
+            "LOOK": "The door hangs crooked on one hinge. Subtle it is not.",
+            "OPEN": "No need. Nature already opened it aggressively.",
+            "USE": "You poke the wreckage. It looks offended."
+          }
+        },
+        "inspected": {
+          "dialogue": {
+            "LOOK": "You have already audited this door. The report is still 'locked'."
+          }
+        }
+      },
       "walkTarget": {
         "x": 240,
         "y": 117
