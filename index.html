@@ -1,0 +1,34 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Maylay - Point and Click Starter</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="game-shell">
+        <div id="stage">
+          <canvas id="game-canvas" width="320" height="180" aria-label="Game canvas"></canvas>
+          <div id="overlay" aria-live="polite">
+            <div id="sentence-line">Look around.</div>
+            <div id="dialogue-panel" class="hidden">
+              <p id="dialogue-text"></p>
+            </div>
+          </div>
+        </div>
+        <div id="ui-bars">
+          <div id="dev-panel" class="hidden">
+            <pre id="dev-info"></pre>
+            <button id="dev-copy" type="button">Copy hotspot JSON</button>
+          </div>
+          <div id="verb-bar"></div>
+          <div id="inventory-bar"></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+
+

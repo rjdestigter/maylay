@@ -1,0 +1,19 @@
+{
+    "name": "maylay",
+    "private": true,
+    "version": "0.1.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc -b && vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "xstate": "^5.20.1"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.2",
+        "vite": "^6.0.0",
+        "@types/node": "^22.10.2"
+    }
+}
