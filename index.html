@@ -8,29 +8,33 @@
   <body>
     <div id="app">
       <div id="game-shell">
-        <div id="stage">
-          <canvas id="game-canvas" width="320" height="180" aria-label="Game canvas"></canvas>
-          <div id="overlay" aria-live="polite">
-            <div id="dialogue-panel" class="hidden">
-              <p id="dialogue-text"></p>
+        <div id="game-layout">
+          <div id="game-main">
+            <div id="stage">
+              <canvas id="game-canvas" width="320" height="180" aria-label="Game canvas"></canvas>
+              <div id="overlay" aria-live="polite">
+                <div id="dialogue-panel" class="hidden">
+                  <p id="dialogue-text"></p>
+                </div>
+              </div>
             </div>
-            <div id="sentence-line">Look around.</div>
+            <div id="ui-bars">
+              <div id="dev-panel" class="hidden">
+                <div id="dev-gui"></div>
+                <pre id="dev-info"></pre>
+                <button id="dev-copy" type="button">Copy room JSON</button>
+              </div>
+              <div id="sentence-line">Look around.</div>
+              <div id="verb-bar"></div>
+              <div id="inventory-bar"></div>
+            </div>
           </div>
-        </div>
-        <div id="ui-bars">
           <div id="audio-bar">
             <button id="audio-unlock" type="button">Enable Audio</button>
             <button id="music-toggle" type="button">Music: Off</button>
             <button id="sfx-toggle" type="button">SFX: Off</button>
             <button id="voice-toggle" type="button">Voice: Off</button>
           </div>
-          <div id="dev-panel" class="hidden">
-            <div id="dev-gui"></div>
-            <pre id="dev-info"></pre>
-            <button id="dev-copy" type="button">Copy room JSON</button>
-          </div>
-          <div id="verb-bar"></div>
-          <div id="inventory-bar"></div>
         </div>
       </div>
     </div>
