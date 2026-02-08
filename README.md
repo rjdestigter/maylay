@@ -22,6 +22,22 @@ npm run build
 npm run preview
 ```
 
+## Deploy to GitHub Pages
+
+This repo includes `.github/workflows/deploy-pages.yml` for automatic Pages deploys.
+
+1. Push this project to GitHub (branch `main` or `master`).
+2. In GitHub, open `Settings -> Pages`.
+3. Set `Source` to `GitHub Actions`.
+4. Push again (or run the workflow manually from `Actions`).
+
+If you removed `origin`, re-add it first:
+
+```bash
+git remote add origin https://github.com/<your-user>/<your-repo>.git
+git push -u origin main
+```
+
 ## File Tree
 
 ```text
