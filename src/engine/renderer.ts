@@ -234,9 +234,11 @@ export class Renderer {
         this.ctx.beginPath();
         this.ctx.arc(hotspot.walkTarget.x, hotspot.walkTarget.y, 5, 0, Math.PI * 2);
         this.ctx.stroke();
+        this.drawWalkTargetHandle(hotspot.walkTarget.x, hotspot.walkTarget.y);
       } else {
         const selectedRect = editTarget === 'spriteBounds' ? spriteBounds : hotspot.bounds;
         this.ctx.strokeRect(selectedRect.x, selectedRect.y, selectedRect.w, selectedRect.h);
+        this.drawRectHandles(selectedRect);
       }
       this.ctx.lineWidth = 1;
     }
@@ -312,5 +314,34 @@ export class Renderer {
     this.ctx.fillText(`nearY ${nearY}`, 4, Math.max(10, nearY - 4));
     this.ctx.fillText(`scale ${currentScale.toFixed(2)}x`, currentX + 2, Math.max(10, currentY - currentH - 3));
     this.ctx.restore();
+  }
+
+  private drawRectHandles(rect: { x: number; y: number; w: number; h: number }): void {
+    const points = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.w, y: rect.y },
+      { x: rect.x, y: rect.y + rect.h },
+      { x: rect.x + rect.w, y: rect.y + rect.h },
+      { x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.5 },
+    ];
+    this.ctx.fillStyle = '#ffd36e';
+    this.ctx.strokeStyle = '#2a1a08';
+    this.ctx.lineWidth = 1;
+    for (const point of points) {
+      const x = Math.round(point.x) - 2;
+      const y = Math.round(point.y) - 2;
+      this.ctx.fillRect(x, y, 5, 5);
+      this.ctx.strokeRect(x, y, 5, 5);
+    }
+  }
+
+  private drawWalkTargetHandle(x: number, y: number): void {
+    this.ctx.beginPath();
+    this.ctx.arc(Math.round(x), Math.round(y), 3, 0, Math.PI * 2);
+    this.ctx.fillStyle = '#ffd36e';
+    this.ctx.fill();
+    this.ctx.strokeStyle = '#2a1a08';
+    this.ctx.lineWidth = 1;
+    this.ctx.stroke();
   }
 }

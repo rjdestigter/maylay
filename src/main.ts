@@ -9,7 +9,7 @@ import { Renderer } from './engine/renderer';
 import { resolveInteraction } from './game/scripts';
 import { gameMachine, type GameContext } from './game/stateMachine';
 import { isHotspotVisible, rooms } from './game/rooms/room1';
-import type { Hotspot, Rect, Verb } from './game/types';
+import type { Hotspot, Point, Rect, Verb } from './game/types';
 
 const WALK_SPEED = 80;
 const STOP_DISTANCE = 2;
@@ -90,6 +90,21 @@ const CURSOR_DEV = makeCursorCss(
 );
 type DevEditTarget = 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon' | 'perspective';
 type DevPerspectiveField = 'farY' | 'nearY' | 'farScale' | 'nearScale';
+type DevRectHandle = 'move' | 'nw' | 'ne' | 'sw' | 'se';
+type DevDragState =
+  | {
+      target: 'bounds' | 'spriteBounds';
+      hotspotId: string;
+      handle: DevRectHandle;
+      startPoint: Point;
+      startRect: Rect;
+    }
+  | {
+      target: 'walkTarget';
+      hotspotId: string;
+      startPoint: Point;
+      startWalkTarget: Point;
+    };
 type SentenceParts = {
   prefix: string;
   target?: string;
@@ -137,6 +152,9 @@ async function bootstrap(): Promise<void> {
   let devEditTarget: DevEditTarget = 'bounds';
   let devPerspectiveField: DevPerspectiveField = 'farY';
   let selectedHotspotId: string | null = null;
+  let devDragState: DevDragState | null = null;
+  let suppressNextDevClick = false;
+  let pointerCanvasPoint: Point | null = null;
 
   let actorPosition = { x: 96, y: 150 };
   let actorSize = { width: 54, height: 68 };
@@ -267,6 +285,7 @@ async function bootstrap(): Promise<void> {
     getHotspots: () => getInputHotspots(actor.getSnapshot().context),
     sendEvent: (event) => actor.send(event),
     onPointerMove: (point, hotspot) => {
+      pointerCanvasPoint = point;
       if (!point || hotspot) {
         hoveredWalkableArea = false;
         return;
@@ -293,6 +312,11 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
+      if (suppressNextDevClick) {
+        suppressNextDevClick = false;
+        return;
+      }
+
       if (devEditTarget === 'walkablePolygon') {
         const room = rooms[actor.getSnapshot().context.currentRoomId];
         if (!room) {
@@ -316,6 +340,114 @@ async function bootstrap(): Promise<void> {
       selectedHotspotId = hotspot?.id === SELF_HOTSPOT_ID ? null : hotspot?.id ?? null;
     },
   });
+
+  const refreshUi = (): void => {
+    const snapshot = actor.getSnapshot();
+    renderUi(snapshot.context, snapshot.matches('dialogue'));
+  };
+
+  const onDevPointerDown = (event: PointerEvent): void => {
+    if (!devMode) {
+      return;
+    }
+    if (devEditTarget !== 'bounds' && devEditTarget !== 'spriteBounds' && devEditTarget !== 'walkTarget') {
+      return;
+    }
+    const point = toCanvasPoint(event, canvas);
+    if (!point) {
+      return;
+    }
+    const snapshot = actor.getSnapshot();
+    const room = rooms[snapshot.context.currentRoomId];
+    if (!room || !selectedHotspotId) {
+      return;
+    }
+    const hotspot = room.hotspots.find((spot) => spot.id === selectedHotspotId);
+    if (!hotspot) {
+      return;
+    }
+
+    if (devEditTarget === 'walkTarget') {
+      if (!isPointNear(point, hotspot.walkTarget, 6)) {
+        return;
+      }
+      devDragState = {
+        target: 'walkTarget',
+        hotspotId: hotspot.id,
+        startPoint: point,
+        startWalkTarget: { ...hotspot.walkTarget },
+      };
+    } else {
+      const rect = getEditableRect(hotspot, devEditTarget);
+      const handle = hitTestRectHandle(point, rect);
+      if (!handle) {
+        return;
+      }
+      devDragState = {
+        target: devEditTarget,
+        hotspotId: hotspot.id,
+        handle,
+        startPoint: point,
+        startRect: { ...rect },
+      };
+    }
+
+    canvas.setPointerCapture(event.pointerId);
+    suppressNextDevClick = true;
+    event.preventDefault();
+    refreshUi();
+  };
+
+  const onDevPointerMove = (event: PointerEvent): void => {
+    if (!devDragState || !devMode) {
+      return;
+    }
+    const point = toCanvasPoint(event, canvas);
+    if (!point) {
+      return;
+    }
+    const snapshot = actor.getSnapshot();
+    const room = rooms[snapshot.context.currentRoomId];
+    if (!room) {
+      return;
+    }
+    const hotspot = room.hotspots.find((spot) => spot.id === devDragState?.hotspotId);
+    if (!hotspot) {
+      return;
+    }
+
+    const dx = point.x - devDragState.startPoint.x;
+    const dy = point.y - devDragState.startPoint.y;
+    if (devDragState.target === 'walkTarget') {
+      hotspot.walkTarget.x = clamp(Math.round(devDragState.startWalkTarget.x + dx), 0, room.width);
+      hotspot.walkTarget.y = clamp(Math.round(devDragState.startWalkTarget.y + dy), 0, room.height);
+    } else {
+      const nextRect = computeDraggedRect(devDragState.startRect, devDragState.handle, dx, dy);
+      const boundedRect = clampRectToRoom(nextRect, room.width, room.height);
+      const rect = getEditableRect(hotspot, devDragState.target);
+      rect.x = boundedRect.x;
+      rect.y = boundedRect.y;
+      rect.w = boundedRect.w;
+      rect.h = boundedRect.h;
+    }
+    refreshUi();
+  };
+
+  const onDevPointerUp = (event: PointerEvent): void => {
+    if (!devDragState) {
+      return;
+    }
+    devDragState = null;
+    if (canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
+    refreshUi();
+  };
+
+  canvas.addEventListener('pointerdown', onDevPointerDown);
+  canvas.addEventListener('pointermove', onDevPointerMove);
+  canvas.addEventListener('pointerup', onDevPointerUp);
+  canvas.addEventListener('pointercancel', onDevPointerUp);
 
   verbBar.addEventListener('click', (event) => {
     const target = event.target;
@@ -441,10 +573,6 @@ async function bootstrap(): Promise<void> {
   actor.send({ type: 'BOOTED' });
 
   const onKeyDown = (event: KeyboardEvent): void => {
-    const refreshUi = (): void => {
-      const snapshot = actor.getSnapshot();
-      renderUi(snapshot.context, snapshot.matches('dialogue'));
-    };
     if (shouldIgnoreKeyboardShortcut(event)) {
       return;
     }
@@ -460,6 +588,7 @@ async function bootstrap(): Promise<void> {
       devMode = !devMode;
       if (!devMode) {
         selectedHotspotId = null;
+        devDragState = null;
       }
       refreshUi();
       event.preventDefault();
@@ -788,6 +917,11 @@ async function bootstrap(): Promise<void> {
 
   function updateCursor(context: GameContext, nowMs: number): void {
     if (devMode) {
+      const dragCursor = getDevDragCursor(context, pointerCanvasPoint, devEditTarget, selectedHotspotId, devDragState);
+      if (dragCursor) {
+        canvas.style.cursor = dragCursor;
+        return;
+      }
       canvas.style.cursor = CURSOR_DEV;
       return;
     }
@@ -806,6 +940,53 @@ async function bootstrap(): Promise<void> {
       return;
     }
     canvas.style.cursor = CURSOR_IDLE;
+  }
+
+  function getDevDragCursor(
+    context: GameContext,
+    point: Point | null,
+    editTarget: DevEditTarget,
+    activeHotspotId: string | null,
+    dragState: DevDragState | null,
+  ): string | null {
+    if (!point || !activeHotspotId) {
+      return null;
+    }
+    const room = rooms[context.currentRoomId];
+    if (!room) {
+      return null;
+    }
+    const hotspot = room.hotspots.find((spot) => spot.id === activeHotspotId);
+    if (!hotspot) {
+      return null;
+    }
+
+    if (editTarget === 'walkTarget') {
+      if (dragState?.target === 'walkTarget') {
+        return 'grabbing';
+      }
+      return isPointNear(point, hotspot.walkTarget, 6) ? 'grab' : null;
+    }
+
+    if (editTarget !== 'bounds' && editTarget !== 'spriteBounds') {
+      return null;
+    }
+
+    const rect = getEditableRect(hotspot, editTarget);
+    const handle = hitTestRectHandle(point, rect);
+    if (!handle) {
+      return null;
+    }
+    if (dragState?.target === editTarget) {
+      return 'grabbing';
+    }
+    if (handle === 'move') {
+      return 'grab';
+    }
+    if (handle === 'nw' || handle === 'se') {
+      return 'nwse-resize';
+    }
+    return 'nesw-resize';
   }
 
   function renderVerbBar(selectedVerb: Verb | null): void {
@@ -884,15 +1065,28 @@ async function bootstrap(): Promise<void> {
     const line2 = `Target [1/2/3/4/5]: ${devEditTarget}`;
     const line3 = hotspot ? `Selected: ${hotspot.id}` : 'Selected: none';
     const line4 = `Description: ${selectedDescription}`;
+    const line4b = hotspot
+      ? `Bounds: x=${hotspot.bounds.x} y=${hotspot.bounds.y} w=${hotspot.bounds.w} h=${hotspot.bounds.h}`
+      : 'Bounds: -';
+    const spriteRect = hotspot?.spriteBounds ?? hotspot?.bounds;
+    const line4c = spriteRect
+      ? `Sprite: x=${spriteRect.x} y=${spriteRect.y} w=${spriteRect.w} h=${spriteRect.h}`
+      : 'Sprite: -';
+    const line4d = hotspot
+      ? `Walk Target: x=${Math.round(hotspot.walkTarget.x)} y=${Math.round(hotspot.walkTarget.y)}`
+      : 'Walk Target: -';
+    const line4e = devDragState
+      ? `Dragging: ${devDragState.target}${devDragState.target !== 'walkTarget' ? ` (${devDragState.handle})` : ''}`
+      : 'Dragging: none';
     const line5 = `Actor size +/-: ${actorSize.width}x${actorSize.height}`;
     const line6 = `Actor render scale: ${getPerspectiveScale(room ?? rooms.room1, actorPosition.y).toFixed(2)}x`;
     const line7 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
     const line8 = `Perspective field [Q/W/E/R]: ${devPerspectiveField}`;
     const line9 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
-    const line10 = 'Move: arrows (Shift=5px) | Rect size: [ ] and ; \'';
+    const line10 = 'Drag handles: corners resize, center moves | Keyboard: arrows [ ] ; \'';
     const line11 = 'Polygon mode: click add, Shift+click undo, Ctrl+click clear';
     const line12 = 'Copy room JSON: C or button';
-    devInfo.textContent = [line1, line2, line3, line4, line5, line6, line7, line8, line9, line10, line11, line12].join('\n');
+    devInfo.textContent = [line1, line2, line3, line4, line4b, line4c, line4d, line4e, line5, line6, line7, line8, line9, line10, line11, line12].join('\n');
   }
 
   function buildSentenceLine(context: GameContext, hoveredHotspotId: string | null, hoverWalkable: boolean): SentenceParts {
@@ -900,7 +1094,7 @@ async function bootstrap(): Promise<void> {
       return {
         prefix: 'Dev editor active (F3)',
         connector: '-',
-        secondaryTarget: 'click hotspot, then move or resize with keyboard',
+        secondaryTarget: 'select hotspot, then drag handles or use keyboard nudge',
         muted: true,
       };
     }
@@ -1157,6 +1351,10 @@ async function bootstrap(): Promise<void> {
 
   window.addEventListener('beforeunload', () => {
     input.destroy();
+    canvas.removeEventListener('pointerdown', onDevPointerDown);
+    canvas.removeEventListener('pointermove', onDevPointerMove);
+    canvas.removeEventListener('pointerup', onDevPointerUp);
+    canvas.removeEventListener('pointercancel', onDevPointerUp);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('pointerdown', tryStartEnabledAudio);
     window.removeEventListener('keydown', tryStartEnabledAudio);
@@ -1448,6 +1646,100 @@ function distancePointToSegment(
 ): number {
   const closest = closestPointOnSegment(point, a, b);
   return Math.hypot(point.x - closest.x, point.y - closest.y);
+}
+
+function toCanvasPoint(event: MouseEvent | PointerEvent, canvas: HTMLCanvasElement): Point | null {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+
+  const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+  if (Number.isNaN(x) || Number.isNaN(y)) {
+    return null;
+  }
+  return { x, y };
+}
+
+function isPointNear(point: Point, target: Point, radius: number): boolean {
+  return Math.hypot(point.x - target.x, point.y - target.y) <= radius;
+}
+
+function hitTestRectHandle(point: Point, rect: Rect): DevRectHandle | null {
+  const radius = 4;
+  const handles: Array<{ handle: DevRectHandle; x: number; y: number }> = [
+    { handle: 'nw', x: rect.x, y: rect.y },
+    { handle: 'ne', x: rect.x + rect.w, y: rect.y },
+    { handle: 'sw', x: rect.x, y: rect.y + rect.h },
+    { handle: 'se', x: rect.x + rect.w, y: rect.y + rect.h },
+    { handle: 'move', x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.5 },
+  ];
+  for (const candidate of handles) {
+    if (Math.abs(point.x - candidate.x) <= radius && Math.abs(point.y - candidate.y) <= radius) {
+      return candidate.handle;
+    }
+  }
+  return null;
+}
+
+function computeDraggedRect(startRect: Rect, handle: DevRectHandle, dx: number, dy: number): Rect {
+  if (handle === 'move') {
+    return {
+      x: Math.round(startRect.x + dx),
+      y: Math.round(startRect.y + dy),
+      w: startRect.w,
+      h: startRect.h,
+    };
+  }
+
+  let left = startRect.x;
+  let right = startRect.x + startRect.w;
+  let top = startRect.y;
+  let bottom = startRect.y + startRect.h;
+
+  if (handle === 'nw' || handle === 'sw') {
+    left += dx;
+  }
+  if (handle === 'ne' || handle === 'se') {
+    right += dx;
+  }
+  if (handle === 'nw' || handle === 'ne') {
+    top += dy;
+  }
+  if (handle === 'sw' || handle === 'se') {
+    bottom += dy;
+  }
+
+  if (right - left < 1) {
+    if (handle === 'nw' || handle === 'sw') {
+      left = right - 1;
+    } else {
+      right = left + 1;
+    }
+  }
+  if (bottom - top < 1) {
+    if (handle === 'nw' || handle === 'ne') {
+      top = bottom - 1;
+    } else {
+      bottom = top + 1;
+    }
+  }
+
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
+    w: Math.max(1, Math.round(right - left)),
+    h: Math.max(1, Math.round(bottom - top)),
+  };
+}
+
+function clampRectToRoom(rect: Rect, roomWidth: number, roomHeight: number): Rect {
+  const width = clamp(Math.round(rect.w), 1, roomWidth);
+  const height = clamp(Math.round(rect.h), 1, roomHeight);
+  const x = clamp(Math.round(rect.x), 0, roomWidth - width);
+  const y = clamp(Math.round(rect.y), 0, roomHeight - height);
+  return { x, y, w: width, h: height };
 }
 
 function getEditableRect(hotspot: Hotspot, target: 'bounds' | 'spriteBounds'): Rect {
