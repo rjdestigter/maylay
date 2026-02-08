@@ -26,19 +26,57 @@ const CURSOR_IDLE = makeCursorCss(
   'default',
 );
 const CURSOR_INTERACT = makeCursorCss(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-    <rect width="32" height="32" fill="none"/>
-    <circle cx="15" cy="15" r="9" fill="#f7d47f" stroke="#3a2613" stroke-width="2"/>
-    <circle cx="15" cy="15" r="3" fill="#3a2613"/>
-    <rect x="14" y="2" width="2" height="6" fill="#3a2613"/>
-    <rect x="14" y="22" width="2" height="6" fill="#3a2613"/>
-    <rect x="2" y="14" width="6" height="2" fill="#3a2613"/>
-    <rect x="22" y="14" width="6" height="2" fill="#3a2613"/>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+    <rect width="40" height="40" fill="none"/>
+    <circle cx="20" cy="20" r="11" fill="#7dd9ff" opacity="0.22"/>
+    <path d="M18 7 L22 7 L22 20 L29 20 L20 33 L11 20 L18 20 Z"
+      transform="rotate(-135 20 20)"
+      fill="#8fdfff" stroke="#0f2e4a" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M30 5 L31 8 L34 9 L31 10 L30 13 L29 10 L26 9 L29 8 Z"
+      fill="#79d7ff" stroke="#0f2e4a" stroke-width="0.9"/>
   </svg>`,
-  15,
-  15,
+  24,
+  16,
   'pointer',
 );
+const CURSOR_INTERACT_SPARKLE = makeCursorCss(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+    <rect width="40" height="40" fill="none"/>
+    <path d="M18 7 L22 7 L22 20 L29 20 L20 33 L11 20 L18 20 Z"
+      transform="rotate(-135 20 20)"
+      fill="#8fdfff" stroke="#0f2e4a" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M30 6 L31.2 9.2 L34.5 10.5 L31.2 11.8 L30 15 L28.8 11.8 L25.5 10.5 L28.8 9.2 Z" fill="#9de4ff" stroke="#0f2e4a" stroke-width="0.9"/>
+    <path d="M9 9 L10 11 L12 12 L10 13 L9 15 L8 13 L6 12 L8 11 Z" fill="#9de4ff" stroke="#0f2e4a" stroke-width="0.8"/>
+    <circle cx="30.5" cy="10.5" r="2.8" fill="#caf0ff" opacity="0.42"/>
+    <circle cx="9" cy="12" r="2" fill="#caf0ff" opacity="0.34"/>
+  </svg>`,
+  24,
+  16,
+  'pointer',
+);
+const CURSOR_INTERACT_SPARKLE_BRIGHT = makeCursorCss(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+    <rect width="40" height="40" fill="none"/>
+    <path d="M18 7 L22 7 L22 20 L29 20 L20 33 L11 20 L18 20 Z"
+      transform="rotate(-135 20 20)"
+      fill="#8fdfff" stroke="#0f2e4a" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M30 5 L31.4 9 L35 10.4 L31.4 11.8 L30 15.8 L28.6 11.8 L25 10.4 L28.6 9 Z" fill="#b8ecff" stroke="#0f2e4a" stroke-width="0.95"/>
+    <path d="M9 9 L10 11 L12 12 L10 13 L9 15 L8 13 L6 12 L8 11 Z" fill="#b8ecff" stroke="#0f2e4a" stroke-width="0.85"/>
+    <path d="M28 24 L29 26 L31 27 L29 28 L28 30 L27 28 L25 27 L27 26 Z" fill="#9de4ff" stroke="#0f2e4a" stroke-width="0.8"/>
+    <circle cx="30.5" cy="10.8" r="3.3" fill="#d7f5ff" opacity="0.5"/>
+    <circle cx="9" cy="12" r="2.5" fill="#d7f5ff" opacity="0.4"/>
+    <circle cx="28" cy="27" r="2.1" fill="#d7f5ff" opacity="0.4"/>
+  </svg>`,
+  24,
+  16,
+  'pointer',
+);
+const CURSOR_WALK_FRAMES = [
+  makeWalkCursorCss(0),
+  makeWalkCursorCss(1),
+  makeWalkCursorCss(2),
+  makeWalkCursorCss(1),
+];
 const CURSOR_DEV = makeCursorCss(
   `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
     <rect width="32" height="32" fill="none"/>
@@ -576,6 +614,7 @@ async function bootstrap(): Promise<void> {
       resolvePendingInteraction(snapshot.context);
     }
 
+    updateCursor(snapshot.context, now);
     drawFrame(snapshot.context, isWalking);
     requestAnimationFrame(frame);
   }
@@ -733,11 +772,29 @@ async function bootstrap(): Promise<void> {
 
     const sentence = buildSentenceLine(context, context.hoveredHotspotId, hoveredWalkableArea);
     sentenceLine.innerHTML = renderSentenceLineHtml(sentence);
+    updateCursor(context, performance.now());
+  }
+
+  function updateCursor(context: GameContext, nowMs: number): void {
     if (devMode) {
       canvas.style.cursor = CURSOR_DEV;
-    } else {
-      canvas.style.cursor = context.hoveredHotspotId || hoveredWalkableArea ? CURSOR_INTERACT : CURSOR_IDLE;
+      return;
     }
+    if (context.hoveredHotspotId) {
+      const sparkleFrame = Math.floor(nowMs / 140) % 3;
+      canvas.style.cursor = sparkleFrame === 0
+        ? CURSOR_INTERACT
+        : sparkleFrame === 1
+          ? CURSOR_INTERACT_SPARKLE
+          : CURSOR_INTERACT_SPARKLE_BRIGHT;
+      return;
+    }
+    if (hoveredWalkableArea) {
+      const walkFrame = Math.floor(nowMs / 110) % CURSOR_WALK_FRAMES.length;
+      canvas.style.cursor = CURSOR_WALK_FRAMES[walkFrame];
+      return;
+    }
+    canvas.style.cursor = CURSOR_IDLE;
   }
 
   function renderVerbBar(selectedVerb: Verb | null): void {
@@ -1556,8 +1613,17 @@ function makeCursorCss(svg: string, hotspotX: number, hotspotY: number, fallback
   return `url("data:image/svg+xml,${encodedSvg}") ${hotspotX} ${hotspotY}, ${fallback}`;
 }
 
-
-
+function makeWalkCursorCss(yOffset: number): string {
+  const topY = 4 + yOffset;
+  const midY = 17 + yOffset;
+  const tipY = 30 + yOffset;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
+    <rect width="34" height="34" fill="none"/>
+    <path d="M15 ${topY} L19 ${topY} L19 ${midY} L26 ${midY} L17 ${tipY} L8 ${midY} L15 ${midY} Z"
+      fill="#b63a21" stroke="#4a130c" stroke-width="1.9" stroke-linejoin="round"/>
+  </svg>`;
+  return makeCursorCss(svg, 17, 28, 'pointer');
+}
 
 
 
