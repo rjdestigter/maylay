@@ -15,7 +15,7 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
 
   if (verb === 'PICK_UP') {
     if (hotspot.id !== 'key') {
-      return { dialogueLines: [`You can't pick up the ${hotspot.name}.`] };
+      return { dialogueLines: [pickUpFailureLine(hotspot.id, hotspot.name)] };
     }
 
     if (context.flags.keyTaken) {
@@ -38,7 +38,7 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
     }
 
     if (selectedItem === null) {
-      return { dialogueLines: ['Use what? Select an inventory item first.'] };
+      return { dialogueLines: [useWithoutItemLine(hotspot.id)] };
     }
 
     if (hotspot.id === 'door' && selectedItem === 'key') {
@@ -57,12 +57,12 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
       };
     }
 
-    return { dialogueLines: [`Using ${selectedItem} on ${hotspot.name} does nothing.`] };
+    return { dialogueLines: [useFailureLine(selectedItem, hotspot.id, hotspot.name)] };
   }
 
   if (verb === 'OPEN') {
     if (hotspot.id !== 'door') {
-      return { dialogueLines: [`You can't open the ${hotspot.name}.`] };
+      return { dialogueLines: [openFailureLine(hotspot.id, hotspot.name)] };
     }
 
     if (!context.flags.doorOpen) {
@@ -75,7 +75,7 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
     };
   }
 
-  return { dialogueLines: ['Nothing happens.'] };
+  return { dialogueLines: ['Bold strategy. Absolutely no effect.'] };
 }
 
 function lookLineFor(hotspotId: string, flags: Record<string, boolean>): string {
@@ -98,8 +98,68 @@ function talkLineFor(hotspotId: string): string {
     case 'sign':
       return 'You greet the sign. It ignores you with confidence.';
     case 'key':
-      return 'The key has no dialogue options.';
+      return 'You ask the key for life advice. It gives you the silent treatment.';
     default:
       return 'There is no response.';
   }
+}
+
+function pickUpFailureLine(hotspotId: string, hotspotName: string): string {
+  switch (hotspotId) {
+    case 'door':
+      return "You'd need a crane, a permit, and probably a better idea.";
+    case 'sign':
+      return 'The sign is deeply rooted in its career.';
+    default:
+      return `You can't pick up the ${hotspotName}. Your back thanks you for trying, though.`;
+  }
+}
+
+function openFailureLine(hotspotId: string, hotspotName: string): string {
+  switch (hotspotId) {
+    case 'sign':
+      return 'You try to open the sign. It remains a sign.';
+    case 'key':
+      return 'You open your hand dramatically. The key is unimpressed.';
+    default:
+      return `You can't open the ${hotspotName}. Not everything has hinges.`;
+  }
+}
+
+function useWithoutItemLine(hotspotId: string): string {
+  switch (hotspotId) {
+    case 'door':
+      return 'Use what on the door? Your optimism jiggles the handle, but not the lock.';
+    case 'sign':
+      return 'Use what on the sign? Stern eye contact is not a tool.';
+    case 'key':
+      return 'Use what on the key? You are currently holding exactly zero useful things.';
+    default:
+      return 'Use what? Select an inventory item first.';
+  }
+}
+
+function useFailureLine(itemId: string, hotspotId: string, hotspotName: string): string {
+  if (itemId === 'key' && hotspotId === 'sign') {
+    return 'You scratch the sign with the key. The sign files a complaint.';
+  }
+  if (itemId === 'key' && hotspotId === 'key') {
+    return 'You tap the key with itself. A breakthrough in advanced key technology.';
+  }
+  if (itemId === 'key' && hotspotId === 'door') {
+    return 'You wave the key near the door dramatically. The lock requests actual alignment.';
+  }
+  if (hotspotId === 'door') {
+    return `You try ${itemId} on the door. The door remains unconvinced.`;
+  }
+  if (hotspotId === 'sign') {
+    return `You try ${itemId} on the sign. It still refuses to become useful.`;
+  }
+  if (hotspotId === 'key') {
+    return `You try ${itemId} on the key. They do not form a meaningful friendship.`;
+  }
+  if (itemId === 'key') {
+    return `You poke the ${hotspotName} with the key. No secret mechanism reveals itself.`;
+  }
+  return `Using ${itemId} on ${hotspotName} mostly builds character.`;
 }
