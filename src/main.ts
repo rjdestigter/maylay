@@ -161,6 +161,7 @@ async function bootstrap(): Promise<void> {
   let devDragState: DevDragState | null = null;
   let suppressNextDevClick = false;
   let pointerCanvasPoint: Point | null = null;
+  let hoveredPolygonVertexIndex: number | null = null;
 
   let actorPosition = { x: 96, y: 150 };
   let actorSize = { width: 54, height: 68 };
@@ -292,6 +293,13 @@ async function bootstrap(): Promise<void> {
     sendEvent: (event) => actor.send(event),
     onPointerMove: (point, hotspot) => {
       pointerCanvasPoint = point;
+      if (devMode && devEditTarget === 'walkablePolygon' && point) {
+        const room = rooms[actor.getSnapshot().context.currentRoomId];
+        const index = hitTestPolygonVertex(point, room?.walkablePolygon ?? []);
+        hoveredPolygonVertexIndex = index >= 0 ? index : null;
+      } else {
+        hoveredPolygonVertexIndex = null;
+      }
       if (!point || hotspot) {
         hoveredWalkableArea = false;
         return;
@@ -331,15 +339,25 @@ async function bootstrap(): Promise<void> {
         if (!room.walkablePolygon) {
           room.walkablePolygon = [];
         }
+        const polygon = room.walkablePolygon;
         if (event.ctrlKey) {
           room.walkablePolygon = [];
           return;
         }
-        if (event.shiftKey) {
-          room.walkablePolygon.pop();
+        if (event.shiftKey || event.altKey) {
+          const deleteIndex = hitTestPolygonVertex(point, polygon);
+          if (deleteIndex >= 0) {
+            polygon.splice(deleteIndex, 1);
+          }
           return;
         }
-        room.walkablePolygon.push({ x: Math.round(point.x), y: Math.round(point.y) });
+        const newPoint = { x: Math.round(point.x), y: Math.round(point.y) };
+        const insertIndex = findPolygonInsertIndex(point, polygon, 8);
+        if (insertIndex >= 0) {
+          polygon.splice(insertIndex, 0, newPoint);
+        } else {
+          polygon.push(newPoint);
+        }
         return;
       }
 
@@ -354,6 +372,9 @@ async function bootstrap(): Promise<void> {
 
   const onDevPointerDown = (event: PointerEvent): void => {
     if (!devMode) {
+      return;
+    }
+    if (event.button !== 0) {
       return;
     }
     if (
@@ -488,10 +509,35 @@ async function bootstrap(): Promise<void> {
     refreshUi();
   };
 
+  const onDevContextMenu = (event: MouseEvent): void => {
+    if (!devMode || devEditTarget !== 'walkablePolygon') {
+      return;
+    }
+    const room = rooms[actor.getSnapshot().context.currentRoomId];
+    const polygon = room?.walkablePolygon;
+    if (!polygon || polygon.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const point = toCanvasPoint(event, canvas);
+    if (!point) {
+      event.preventDefault();
+      return;
+    }
+    const deleteIndex = hitTestPolygonVertex(point, polygon);
+    if (deleteIndex >= 0) {
+      polygon.splice(deleteIndex, 1);
+      hoveredPolygonVertexIndex = null;
+      refreshUi();
+    }
+    event.preventDefault();
+  };
+
   canvas.addEventListener('pointerdown', onDevPointerDown);
   canvas.addEventListener('pointermove', onDevPointerMove);
   canvas.addEventListener('pointerup', onDevPointerUp);
   canvas.addEventListener('pointercancel', onDevPointerUp);
+  canvas.addEventListener('contextmenu', onDevContextMenu);
 
   verbBar.addEventListener('click', (event) => {
     const target = event.target;
@@ -713,6 +759,20 @@ async function bootstrap(): Promise<void> {
       event.preventDefault();
       return;
     }
+    if (devEditTarget === 'walkablePolygon' && (event.key === 'Delete' || event.key === 'Backspace')) {
+      const room = rooms[actor.getSnapshot().context.currentRoomId];
+      const polygon = room?.walkablePolygon;
+      if (polygon && polygon.length > 0) {
+        const index = hoveredPolygonVertexIndex ?? (polygon.length - 1);
+        if (index >= 0 && index < polygon.length) {
+          polygon.splice(index, 1);
+          hoveredPolygonVertexIndex = null;
+          refreshUi();
+        }
+      }
+      event.preventDefault();
+      return;
+    }
     if (event.key === '-' || event.key === '_') {
       adjustActorSize(-1, -1, event.shiftKey);
       event.preventDefault();
@@ -828,6 +888,8 @@ async function bootstrap(): Promise<void> {
         enabled: devMode,
         selectedHotspotId,
         editTarget: devEditTarget,
+        polygonHoverVertexIndex: hoveredPolygonVertexIndex,
+        polygonDragVertexIndex: devDragState?.target === 'walkablePolygon' ? devDragState.vertexIndex : null,
         perspective: room.perspective,
         actorBaseSize: { ...actorSize },
         actorFeetY: actorPosition.y,
@@ -1154,7 +1216,7 @@ async function bootstrap(): Promise<void> {
     const line8 = `Perspective field [Q/W/E/R]: ${devPerspectiveField}`;
     const line9 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
     const line10 = 'Drag handles: corners resize, center moves | Keyboard: arrows [ ] ; \'';
-    const line11 = 'Polygon mode: click add, Shift+click undo, Ctrl+click clear';
+    const line11 = 'Polygon mode: drag vertex, click edge to insert, Shift/Alt/right-click/Delete to remove, Ctrl+click clear';
     const line12 = 'Copy room JSON: C or button';
     devInfo.textContent = [line1, line2, line3, line4, line4b, line4c, line4d, line4e, line5, line6, line7, line8, line9, line10, line11, line12].join('\n');
   }
@@ -1425,6 +1487,7 @@ async function bootstrap(): Promise<void> {
     canvas.removeEventListener('pointermove', onDevPointerMove);
     canvas.removeEventListener('pointerup', onDevPointerUp);
     canvas.removeEventListener('pointercancel', onDevPointerUp);
+    canvas.removeEventListener('contextmenu', onDevContextMenu);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('pointerdown', tryStartEnabledAudio);
     window.removeEventListener('keydown', tryStartEnabledAudio);
@@ -1762,6 +1825,24 @@ function hitTestPolygonVertex(point: Point, polygon: Point[]): number {
     }
   }
   return -1;
+}
+
+function findPolygonInsertIndex(point: Point, polygon: Point[], maxDistance: number): number {
+  if (polygon.length < 2) {
+    return -1;
+  }
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < polygon.length; i += 1) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const distance = distancePointToSegment(point, a, b);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = i + 1;
+    }
+  }
+  return bestDistance <= maxDistance ? bestIndex : -1;
 }
 
 function computeDraggedRect(startRect: Rect, handle: DevRectHandle, dx: number, dy: number): Rect {

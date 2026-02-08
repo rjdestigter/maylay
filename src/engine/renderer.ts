@@ -22,6 +22,8 @@ export interface RenderParams {
     enabled: boolean;
     selectedHotspotId: string | null;
     editTarget: 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon' | 'perspective';
+    polygonHoverVertexIndex?: number | null;
+    polygonDragVertexIndex?: number | null;
     perspective?: {
       farY: number;
       nearY: number;
@@ -83,6 +85,8 @@ export class Renderer {
         walkablePolygon,
         devEditor.selectedHotspotId,
         devEditor.editTarget,
+        devEditor.polygonHoverVertexIndex ?? null,
+        devEditor.polygonDragVertexIndex ?? null,
         devEditor.perspective,
         devEditor.actorBaseSize,
         devEditor.actorFeetY,
@@ -183,6 +187,8 @@ export class Renderer {
     walkablePolygon: { x: number; y: number }[] | undefined,
     selectedHotspotId: string | null,
     editTarget: 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon' | 'perspective',
+    polygonHoverVertexIndex: number | null,
+    polygonDragVertexIndex: number | null,
     perspective: { farY: number; nearY: number; farScale: number; nearScale: number } | undefined,
     actorBaseSize: { width: number; height: number } | undefined,
     actorFeetY: number | undefined,
@@ -203,9 +209,18 @@ export class Renderer {
       this.ctx.stroke();
       this.ctx.lineWidth = 1;
 
-      for (const vertex of walkablePolygon) {
-        this.ctx.fillStyle = editTarget === 'walkablePolygon' ? '#ff5ca2' : '#7ef29a';
-        this.ctx.fillRect(vertex.x - 1, vertex.y - 1, 3, 3);
+      for (let i = 0; i < walkablePolygon.length; i += 1) {
+        const vertex = walkablePolygon[i];
+        const isDragged = polygonDragVertexIndex === i;
+        const isHovered = polygonHoverVertexIndex === i;
+        const radius = isDragged ? 4 : isHovered ? 3.5 : 3;
+        this.ctx.beginPath();
+        this.ctx.arc(vertex.x, vertex.y, radius, 0, Math.PI * 2);
+        this.ctx.fillStyle = isDragged ? '#ffd36e' : editTarget === 'walkablePolygon' ? '#ff5ca2' : '#7ef29a';
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#1f1524';
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
       }
     }
 
