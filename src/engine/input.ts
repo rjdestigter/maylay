@@ -3,6 +3,8 @@ import type { Hotspot, Point } from '../game/types';
 
 interface InputControllerOptions {
   canvas: HTMLCanvasElement;
+  logicalWidth?: number;
+  logicalHeight?: number;
   getHotspots: () => Hotspot[];
   sendEvent: (event: GameEvent) => void;
   canProcessInteraction?: () => boolean;
@@ -16,10 +18,12 @@ export interface InputController {
 }
 
 export function createInputController(options: InputControllerOptions): InputController {
+  const logicalWidth = options.logicalWidth ?? options.canvas.width;
+  const logicalHeight = options.logicalHeight ?? options.canvas.height;
   let hoveredHotspotId: string | null = null;
 
   const onPointerMove = (event: PointerEvent): void => {
-    const point = toCanvasPoint(event, options.canvas);
+    const point = toCanvasPoint(event, options.canvas, logicalWidth, logicalHeight);
     const hotspot = point ? hitTestHotspot(point, options.getHotspots()) : null;
     options.onPointerMove?.(point, hotspot);
     const nextHoveredId = hotspot?.id ?? null;
@@ -39,7 +43,7 @@ export function createInputController(options: InputControllerOptions): InputCon
   };
 
   const onClick = (event: MouseEvent): void => {
-    const point = toCanvasPoint(event, options.canvas);
+    const point = toCanvasPoint(event, options.canvas, logicalWidth, logicalHeight);
     if (!point) {
       return;
     }
@@ -76,14 +80,19 @@ export function createInputController(options: InputControllerOptions): InputCon
   };
 }
 
-function toCanvasPoint(event: MouseEvent | PointerEvent, canvas: HTMLCanvasElement): Point | null {
+function toCanvasPoint(
+  event: MouseEvent | PointerEvent,
+  canvas: HTMLCanvasElement,
+  logicalWidth: number,
+  logicalHeight: number,
+): Point | null {
   const rect = canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) {
     return null;
   }
 
-  const x = (event.clientX - rect.left) * (canvas.width / rect.width);
-  const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+  const x = (event.clientX - rect.left) * (logicalWidth / rect.width);
+  const y = (event.clientY - rect.top) * (logicalHeight / rect.height);
 
   if (Number.isNaN(x) || Number.isNaN(y)) {
     return null;

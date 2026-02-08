@@ -41,6 +41,7 @@ export interface RenderParams {
 export class Renderer {
   readonly width = 320;
   readonly height = 180;
+  readonly renderScale = 4;
   private readonly lpcFrameWidth = 64;
   private readonly lpcFrameHeight = 64;
   private readonly lpcSideRow = 1;
@@ -48,6 +49,11 @@ export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly assets: AssetStore) {
+    this.canvas.width = this.width * this.renderScale;
+    this.canvas.height = this.height * this.renderScale;
+    this.canvas.dataset.logicalWidth = String(this.width);
+    this.canvas.dataset.logicalHeight = String(this.height);
+
     const ctx = this.canvas.getContext('2d');
     if (!ctx) {
       throw new Error('Unable to get 2D rendering context');
@@ -58,7 +64,8 @@ export class Renderer {
 
   render(params: RenderParams): void {
     const { room, actor, hotspots, walkablePolygon, debugHotspots, flags, devEditor } = params;
-    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.setTransform(this.renderScale, 0, 0, this.renderScale, 0, 0);
+    this.ctx.imageSmoothingEnabled = true;
 
     if (room.id === 'room1') {
       this.ctx.drawImage(this.assets.getImage('room1Bg'), 0, 0, this.width, this.height);
@@ -101,6 +108,8 @@ export class Renderer {
   }
 
   private drawActor(actor: ActorRenderState): void {
+    const previousSmoothing = this.ctx.imageSmoothingEnabled;
+    this.ctx.imageSmoothingEnabled = false;
     const clampedWidth = Math.max(8, Math.round(actor.width));
     const clampedHeight = Math.max(8, Math.round(actor.height));
     const centerX = Math.round(actor.x);
@@ -113,6 +122,7 @@ export class Renderer {
     if (layers.length === 0) {
       const fallback = this.assets.getImage('actorIdle');
       this.ctx.drawImage(fallback, drawX, drawY, clampedWidth, clampedHeight);
+      this.ctx.imageSmoothingEnabled = previousSmoothing;
       return;
     }
 
@@ -142,6 +152,7 @@ export class Renderer {
       );
     }
     this.ctx.restore();
+    this.ctx.imageSmoothingEnabled = previousSmoothing;
   }
 
   private getLpcFrameColumn(animationId: CharacterAnimationId, walkCycle: number): number {

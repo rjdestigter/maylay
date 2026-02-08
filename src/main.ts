@@ -152,6 +152,8 @@ async function bootstrap(): Promise<void> {
 
   const assets = await createAssets();
   const renderer = new Renderer(canvas, assets);
+  const logicalWidth = renderer.width;
+  const logicalHeight = renderer.height;
   const actor = createActor(gameMachine);
   let debugHotspots = false;
   let devMode = false;
@@ -290,6 +292,8 @@ async function bootstrap(): Promise<void> {
 
   const input = createInputController({
     canvas,
+    logicalWidth,
+    logicalHeight,
     getHotspots: () => getInputHotspots(actor.getSnapshot().context),
     sendEvent: (event) => actor.send(event),
     onPointerMove: (point, hotspot) => {
@@ -386,7 +390,7 @@ async function bootstrap(): Promise<void> {
     ) {
       return;
     }
-    const point = toCanvasPoint(event, canvas);
+    const point = toCanvasPoint(event, canvas, logicalWidth, logicalHeight);
     if (!point) {
       return;
     }
@@ -455,7 +459,7 @@ async function bootstrap(): Promise<void> {
     if (!dragState || !devMode) {
       return;
     }
-    const point = toCanvasPoint(event, canvas);
+    const point = toCanvasPoint(event, canvas, logicalWidth, logicalHeight);
     if (!point) {
       return;
     }
@@ -520,7 +524,7 @@ async function bootstrap(): Promise<void> {
       event.preventDefault();
       return;
     }
-    const point = toCanvasPoint(event, canvas);
+    const point = toCanvasPoint(event, canvas, logicalWidth, logicalHeight);
     if (!point) {
       event.preventDefault();
       return;
@@ -1836,14 +1840,19 @@ function distancePointToSegment(
   return Math.hypot(point.x - closest.x, point.y - closest.y);
 }
 
-function toCanvasPoint(event: MouseEvent | PointerEvent, canvas: HTMLCanvasElement): Point | null {
+function toCanvasPoint(
+  event: MouseEvent | PointerEvent,
+  canvas: HTMLCanvasElement,
+  logicalWidth: number,
+  logicalHeight: number,
+): Point | null {
   const rect = canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) {
     return null;
   }
 
-  const x = (event.clientX - rect.left) * (canvas.width / rect.width);
-  const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+  const x = (event.clientX - rect.left) * (logicalWidth / rect.width);
+  const y = (event.clientY - rect.top) * (logicalHeight / rect.height);
   if (Number.isNaN(x) || Number.isNaN(y)) {
     return null;
   }
