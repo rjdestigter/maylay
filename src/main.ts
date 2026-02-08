@@ -104,6 +104,12 @@ type DevDragState =
       hotspotId: string;
       startPoint: Point;
       startWalkTarget: Point;
+    }
+  | {
+      target: 'walkablePolygon';
+      vertexIndex: number;
+      startPoint: Point;
+      startVertex: Point;
     };
 type SentenceParts = {
   prefix: string;
@@ -350,56 +356,12 @@ async function bootstrap(): Promise<void> {
     if (!devMode) {
       return;
     }
-    if (devEditTarget !== 'bounds' && devEditTarget !== 'spriteBounds' && devEditTarget !== 'walkTarget') {
-      return;
-    }
-    const point = toCanvasPoint(event, canvas);
-    if (!point) {
-      return;
-    }
-    const snapshot = actor.getSnapshot();
-    const room = rooms[snapshot.context.currentRoomId];
-    if (!room || !selectedHotspotId) {
-      return;
-    }
-    const hotspot = room.hotspots.find((spot) => spot.id === selectedHotspotId);
-    if (!hotspot) {
-      return;
-    }
-
-    if (devEditTarget === 'walkTarget') {
-      if (!isPointNear(point, hotspot.walkTarget, 6)) {
-        return;
-      }
-      devDragState = {
-        target: 'walkTarget',
-        hotspotId: hotspot.id,
-        startPoint: point,
-        startWalkTarget: { ...hotspot.walkTarget },
-      };
-    } else {
-      const rect = getEditableRect(hotspot, devEditTarget);
-      const handle = hitTestRectHandle(point, rect);
-      if (!handle) {
-        return;
-      }
-      devDragState = {
-        target: devEditTarget,
-        hotspotId: hotspot.id,
-        handle,
-        startPoint: point,
-        startRect: { ...rect },
-      };
-    }
-
-    canvas.setPointerCapture(event.pointerId);
-    suppressNextDevClick = true;
-    event.preventDefault();
-    refreshUi();
-  };
-
-  const onDevPointerMove = (event: PointerEvent): void => {
-    if (!devDragState || !devMode) {
+    if (
+      devEditTarget !== 'bounds'
+      && devEditTarget !== 'spriteBounds'
+      && devEditTarget !== 'walkTarget'
+      && devEditTarget !== 'walkablePolygon'
+    ) {
       return;
     }
     const point = toCanvasPoint(event, canvas);
@@ -411,20 +373,102 @@ async function bootstrap(): Promise<void> {
     if (!room) {
       return;
     }
-    const hotspot = room.hotspots.find((spot) => spot.id === devDragState?.hotspotId);
+
+    if (devEditTarget === 'walkablePolygon') {
+      const polygon = room.walkablePolygon ?? [];
+      const vertexIndex = hitTestPolygonVertex(point, polygon);
+      if (vertexIndex < 0) {
+        return;
+      }
+      devDragState = {
+        target: 'walkablePolygon',
+        vertexIndex,
+        startPoint: point,
+        startVertex: { ...polygon[vertexIndex] },
+      };
+    } else {
+      if (!selectedHotspotId) {
+        return;
+      }
+      const hotspot = room.hotspots.find((spot) => spot.id === selectedHotspotId);
+      if (!hotspot) {
+        return;
+      }
+      if (devEditTarget === 'walkTarget') {
+        if (!isPointNear(point, hotspot.walkTarget, 6)) {
+          return;
+        }
+        devDragState = {
+          target: 'walkTarget',
+          hotspotId: hotspot.id,
+          startPoint: point,
+          startWalkTarget: { ...hotspot.walkTarget },
+        };
+      } else {
+        const rect = getEditableRect(hotspot, devEditTarget);
+        const handle = hitTestRectHandle(point, rect);
+        if (!handle) {
+          return;
+        }
+        devDragState = {
+          target: devEditTarget,
+          hotspotId: hotspot.id,
+          handle,
+          startPoint: point,
+          startRect: { ...rect },
+        };
+      }
+    }
+
+    if (devDragState) {
+      canvas.setPointerCapture(event.pointerId);
+      suppressNextDevClick = true;
+      event.preventDefault();
+      refreshUi();
+    }
+  };
+
+  const onDevPointerMove = (event: PointerEvent): void => {
+    const dragState = devDragState;
+    if (!dragState || !devMode) {
+      return;
+    }
+    const point = toCanvasPoint(event, canvas);
+    if (!point) {
+      return;
+    }
+    const snapshot = actor.getSnapshot();
+    const room = rooms[snapshot.context.currentRoomId];
+    if (!room) {
+      return;
+    }
+
+    const dx = point.x - dragState.startPoint.x;
+    const dy = point.y - dragState.startPoint.y;
+
+    if (dragState.target === 'walkablePolygon') {
+      const polygon = room.walkablePolygon;
+      if (!polygon || dragState.vertexIndex < 0 || dragState.vertexIndex >= polygon.length) {
+        return;
+      }
+      polygon[dragState.vertexIndex].x = clamp(Math.round(dragState.startVertex.x + dx), 0, room.width);
+      polygon[dragState.vertexIndex].y = clamp(Math.round(dragState.startVertex.y + dy), 0, room.height);
+      refreshUi();
+      return;
+    }
+
+    const hotspot = room.hotspots.find((spot) => spot.id === dragState.hotspotId);
     if (!hotspot) {
       return;
     }
 
-    const dx = point.x - devDragState.startPoint.x;
-    const dy = point.y - devDragState.startPoint.y;
-    if (devDragState.target === 'walkTarget') {
-      hotspot.walkTarget.x = clamp(Math.round(devDragState.startWalkTarget.x + dx), 0, room.width);
-      hotspot.walkTarget.y = clamp(Math.round(devDragState.startWalkTarget.y + dy), 0, room.height);
+    if (dragState.target === 'walkTarget') {
+      hotspot.walkTarget.x = clamp(Math.round(dragState.startWalkTarget.x + dx), 0, room.width);
+      hotspot.walkTarget.y = clamp(Math.round(dragState.startWalkTarget.y + dy), 0, room.height);
     } else {
-      const nextRect = computeDraggedRect(devDragState.startRect, devDragState.handle, dx, dy);
+      const nextRect = computeDraggedRect(dragState.startRect, dragState.handle, dx, dy);
       const boundedRect = clampRectToRoom(nextRect, room.width, room.height);
-      const rect = getEditableRect(hotspot, devDragState.target);
+      const rect = getEditableRect(hotspot, dragState.target);
       rect.x = boundedRect.x;
       rect.y = boundedRect.y;
       rect.w = boundedRect.w;
@@ -949,13 +993,26 @@ async function bootstrap(): Promise<void> {
     activeHotspotId: string | null,
     dragState: DevDragState | null,
   ): string | null {
-    if (!point || !activeHotspotId) {
+    if (!point) {
       return null;
     }
     const room = rooms[context.currentRoomId];
     if (!room) {
       return null;
     }
+
+    if (editTarget === 'walkablePolygon') {
+      if (dragState?.target === 'walkablePolygon') {
+        return 'grabbing';
+      }
+      const vertexIndex = hitTestPolygonVertex(point, room.walkablePolygon ?? []);
+      return vertexIndex >= 0 ? 'grab' : null;
+    }
+
+    if (!activeHotspotId) {
+      return null;
+    }
+
     const hotspot = room.hotspots.find((spot) => spot.id === activeHotspotId);
     if (!hotspot) {
       return null;
@@ -1075,9 +1132,22 @@ async function bootstrap(): Promise<void> {
     const line4d = hotspot
       ? `Walk Target: x=${Math.round(hotspot.walkTarget.x)} y=${Math.round(hotspot.walkTarget.y)}`
       : 'Walk Target: -';
-    const line4e = devDragState
-      ? `Dragging: ${devDragState.target}${devDragState.target !== 'walkTarget' ? ` (${devDragState.handle})` : ''}`
-      : 'Dragging: none';
+    const dragState = devDragState;
+    let line4e = 'Dragging: none';
+    if (dragState) {
+      switch (dragState.target) {
+        case 'bounds':
+        case 'spriteBounds':
+          line4e = `Dragging: ${dragState.target} (${dragState.handle})`;
+          break;
+        case 'walkTarget':
+          line4e = 'Dragging: walkTarget';
+          break;
+        case 'walkablePolygon':
+          line4e = `Dragging: walkablePolygon (vertex ${dragState.vertexIndex})`;
+          break;
+      }
+    }
     const line5 = `Actor size +/-: ${actorSize.width}x${actorSize.height}`;
     const line6 = `Actor render scale: ${getPerspectiveScale(room ?? rooms.room1, actorPosition.y).toFixed(2)}x`;
     const line7 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
@@ -1681,6 +1751,17 @@ function hitTestRectHandle(point: Point, rect: Rect): DevRectHandle | null {
     }
   }
   return null;
+}
+
+function hitTestPolygonVertex(point: Point, polygon: Point[]): number {
+  const radius = 4;
+  for (let index = polygon.length - 1; index >= 0; index -= 1) {
+    const vertex = polygon[index];
+    if (Math.abs(point.x - vertex.x) <= radius && Math.abs(point.y - vertex.y) <= radius) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function computeDraggedRect(startRect: Rect, handle: DevRectHandle, dx: number, dy: number): Rect {
