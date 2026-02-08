@@ -41,6 +41,7 @@ async function bootstrap(): Promise<void> {
   const inventoryBar = getRequiredElement<HTMLDivElement>('inventory-bar');
   const dialoguePanel = getRequiredElement<HTMLDivElement>('dialogue-panel');
   const dialogueText = getRequiredElement<HTMLParagraphElement>('dialogue-text');
+  const audioUnlock = getRequiredElement<HTMLButtonElement>('audio-unlock');
   const musicToggle = getRequiredElement<HTMLButtonElement>('music-toggle');
   const sfxToggle = getRequiredElement<HTMLButtonElement>('sfx-toggle');
   const voiceToggle = getRequiredElement<HTMLButtonElement>('voice-toggle');
@@ -69,23 +70,54 @@ async function bootstrap(): Promise<void> {
   const backgroundMusic = createBackgroundMusic(musicRoom1Url);
   const backgroundSfx = createBackgroundMusic(forestAmbienceUrl);
   const voicePlayer = createVoicePlayer();
-  let musicEnabled = false;
-  let sfxEnabled = false;
-  let voiceEnabled = false;
+  let musicEnabled = true;
+  let sfxEnabled = true;
+  let voiceEnabled = true;
+  let musicBlocked = false;
+  let sfxBlocked = false;
+  let audioUnlocked = false;
   let wasInDialogue = false;
   let lastSpokenDialogueKey: string | null = null;
+
+  const refreshAudioLabels = (): void => {
+    musicToggle.textContent = musicEnabled ? (musicBlocked ? 'Music: On (tap)' : 'Music: On') : 'Music: Off';
+    sfxToggle.textContent = sfxEnabled ? (sfxBlocked ? 'SFX: On (tap)' : 'SFX: On') : 'SFX: Off';
+    audioUnlock.hidden = audioUnlocked;
+  };
+
+  const tryStartEnabledAudio = (): void => {
+    if (musicEnabled) {
+      void backgroundMusic.play().then(() => {
+        musicBlocked = false;
+        audioUnlocked = true;
+        refreshAudioLabels();
+      }).catch(() => {
+        musicBlocked = true;
+        refreshAudioLabels();
+      });
+    }
+    if (sfxEnabled) {
+      void backgroundSfx.play().then(() => {
+        sfxBlocked = false;
+        audioUnlocked = true;
+        refreshAudioLabels();
+      }).catch(() => {
+        sfxBlocked = true;
+        refreshAudioLabels();
+      });
+    }
+  };
 
   const setMusicEnabled = (enabled: boolean): void => {
     musicEnabled = enabled;
     if (enabled) {
-      void backgroundMusic.play().catch(() => {
-        musicEnabled = false;
-        musicToggle.textContent = 'Music: Off';
-      });
+      tryStartEnabledAudio();
     } else {
+      musicBlocked = false;
       backgroundMusic.pause();
+      refreshAudioLabels();
     }
-    musicToggle.textContent = musicEnabled ? 'Music: On' : 'Music: Off';
+    refreshAudioLabels();
   };
 
   musicToggle.addEventListener('click', () => {
@@ -95,21 +127,20 @@ async function bootstrap(): Promise<void> {
   const setSfxEnabled = (enabled: boolean): void => {
     sfxEnabled = enabled;
     if (enabled) {
-      void backgroundSfx.play().catch(() => {
-        sfxEnabled = false;
-        sfxToggle.textContent = 'SFX: Off';
-      });
+      tryStartEnabledAudio();
     } else {
+      sfxBlocked = false;
       backgroundSfx.pause();
+      refreshAudioLabels();
     }
-    sfxToggle.textContent = sfxEnabled ? 'SFX: On' : 'SFX: Off';
+    refreshAudioLabels();
   };
 
   sfxToggle.addEventListener('click', () => {
     setSfxEnabled(!sfxEnabled);
   });
 
-  const setVoiceEnabled = (enabled: boolean): void => {
+  const setVoiceEnabled = (enabled: boolean, announce: boolean = true): void => {
     if (!voicePlayer.isSupported()) {
       voiceEnabled = false;
       voiceToggle.textContent = 'Voice: Unavailable';
@@ -122,7 +153,9 @@ async function bootstrap(): Promise<void> {
       voicePlayer.cancel();
       return;
     }
-    voicePlayer.speak('Voice enabled.');
+    if (announce) {
+      voicePlayer.speak('Voice enabled.');
+    }
     const snapshot = actor.getSnapshot();
     if (snapshot.matches('dialogue')) {
       const line = snapshot.context.dialogueLines[snapshot.context.dialogueIndex];
@@ -138,7 +171,17 @@ async function bootstrap(): Promise<void> {
   if (!voicePlayer.isSupported()) {
     voiceToggle.textContent = 'Voice: Unavailable';
     voiceToggle.disabled = true;
+  } else {
+    setVoiceEnabled(true, false);
   }
+  setMusicEnabled(true);
+  setSfxEnabled(true);
+  refreshAudioLabels();
+  audioUnlock.addEventListener('click', () => {
+    tryStartEnabledAudio();
+  });
+  window.addEventListener('pointerdown', tryStartEnabledAudio);
+  window.addEventListener('keydown', tryStartEnabledAudio);
 
   const input = createInputController({
     canvas,
@@ -309,6 +352,9 @@ async function bootstrap(): Promise<void> {
       const snapshot = actor.getSnapshot();
       renderUi(snapshot.context, snapshot.matches('dialogue'));
     };
+    if (shouldIgnoreKeyboardShortcut(event)) {
+      return;
+    }
 
     if (event.key === 'F2') {
       debugHotspots = !debugHotspots;
@@ -325,6 +371,17 @@ async function bootstrap(): Promise<void> {
       refreshUi();
       event.preventDefault();
       return;
+    }
+
+    if (!devMode) {
+      const shortcutVerb = keyboardShortcutVerb(event.key);
+      if (shortcutVerb) {
+        const currentVerb = actor.getSnapshot().context.selectedVerb;
+        actor.send({ type: 'VERB_SELECTED', verb: currentVerb === shortcutVerb ? null : shortcutVerb });
+        refreshUi();
+        event.preventDefault();
+        return;
+      }
     }
 
     if (!devMode) {
@@ -640,7 +697,8 @@ async function bootstrap(): Promise<void> {
   function renderVerbBar(selectedVerb: Verb | null): void {
     const buttons = VERBS.map((verb) => {
       const activeClass = verb === selectedVerb ? 'active' : '';
-      return `<button class="${activeClass}" data-verb="${verb}">${verbLabel(verb)}</button>`;
+      const label = verbLabel(verb);
+      return `<button class="verb-button ${activeClass}" data-verb="${verb}" aria-pressed="${verb === selectedVerb}"><span class="verb-main">${label}</span><span class="verb-key">${verb.charAt(0)}</span></button>`;
     });
 
     verbBar.innerHTML = buttons.join('');
@@ -653,15 +711,10 @@ async function bootstrap(): Promise<void> {
       const activeClass = item.id === context.selectedInventoryItemId ? 'active' : '';
       const iconHtml = inventoryIconHtml(item.id, loadedAssets);
       slots.push(
-        `<button class="inventory-item ${activeClass}" data-item-id="${item.id}">${iconHtml}<span>${item.name}</span></button>`,
+        `<button class="inventory-item ${activeClass}" data-item-id="${item.id}" aria-pressed="${item.id === context.selectedInventoryItemId}">${iconHtml}<span class="inventory-label">${item.name}</span></button>`,
       );
     }
-
-    while (slots.length < 6) {
-      slots.push('<button disabled>...</button>');
-    }
-
-    inventoryBar.innerHTML = slots.join('');
+    inventoryBar.innerHTML = slots.length > 0 ? slots.join('') : '<div class="inventory-empty-state">Inventory empty</div>';
   }
 
   function renderDevPanel(context: GameContext): void {
@@ -866,6 +919,8 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('beforeunload', () => {
     input.destroy();
     window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('pointerdown', tryStartEnabledAudio);
+    window.removeEventListener('keydown', tryStartEnabledAudio);
     backgroundMusic.pause();
     backgroundSfx.pause();
     voicePlayer.cancel();
@@ -1224,6 +1279,38 @@ function getRequiredElement<T extends HTMLElement>(id: string): T {
 
 function isVerb(value: string | undefined): value is Verb {
   return value === 'LOOK' || value === 'TALK' || value === 'PICK_UP' || value === 'USE' || value === 'OPEN';
+}
+
+function keyboardShortcutVerb(key: string): Verb | null {
+  const normalized = key.toLowerCase();
+  if (normalized === 'l') {
+    return 'LOOK';
+  }
+  if (normalized === 't') {
+    return 'TALK';
+  }
+  if (normalized === 'p') {
+    return 'PICK_UP';
+  }
+  if (normalized === 'u') {
+    return 'USE';
+  }
+  if (normalized === 'o') {
+    return 'OPEN';
+  }
+  return null;
+}
+
+function shouldIgnoreKeyboardShortcut(event: KeyboardEvent): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return true;
+  }
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tag = target.tagName.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || target.isContentEditable;
 }
 
 function isDevEditTarget(value: string | undefined): value is DevEditTarget {

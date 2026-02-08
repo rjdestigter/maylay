@@ -49,6 +49,8 @@ export const gameMachine = setup({
   guards: {
     hasDialogue: ({ event }) => event.type === 'SCRIPT_RESOLVED' && event.result.dialogueLines.length > 0,
     hasMoreDialogue: ({ context }) => context.dialogueIndex < context.dialogueLines.length - 1,
+    shouldInspectInventory: ({ context, event }) =>
+      event.type === 'INVENTORY_SELECTED' && event.itemId !== null && context.selectedVerb === 'LOOK',
   },
   delays: {
     dialogueAutoAdvance: ({ context }) => {
@@ -87,6 +89,24 @@ export const gameMachine = setup({
       return {
         ...context,
         selectedInventoryItemId: event.itemId,
+      };
+    }),
+    inspectInventoryItem: assign(({ context, event }) => {
+      if (event.type !== 'INVENTORY_SELECTED' || event.itemId === null) {
+        return context;
+      }
+
+      const item = context.inventory.find((candidate) => candidate.id === event.itemId);
+      if (!item) {
+        return context;
+      }
+
+      return {
+        ...context,
+        selectedVerb: null,
+        selectedInventoryItemId: null,
+        dialogueLines: [inventoryLookLine(item.id, item.name)],
+        dialogueIndex: 0,
       };
     }),
     setPendingInteraction: assign(({ context, event }) => {
@@ -134,6 +154,7 @@ export const gameMachine = setup({
         ...context,
         flags: nextFlags,
         inventory: nextInventory,
+        selectedVerb: null,
         selectedInventoryItemId,
         currentRoomId: event.result.roomChangeTo ?? context.currentRoomId,
         dialogueLines: event.result.dialogueLines,
@@ -170,7 +191,14 @@ export const gameMachine = setup({
       on: {
         VERB_SELECTED: { actions: 'setVerb' },
         HOTSPOT_HOVERED: { actions: 'setHovered' },
-        INVENTORY_SELECTED: { actions: 'setInventorySelection' },
+        INVENTORY_SELECTED: [
+          {
+            guard: 'shouldInspectInventory',
+            target: 'dialogue',
+            actions: 'inspectInventoryItem',
+          },
+          { actions: 'setInventorySelection' },
+        ],
         HOTSPOT_CLICKED: {
           target: 'walkingToTarget',
           actions: 'setPendingInteraction',
@@ -229,6 +257,23 @@ export const gameMachine = setup({
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function inventoryLookLine(itemId: string, itemName: string): string {
+  if (itemId === 'key') {
+    return 'A brass key. It probably opens that stubborn door.';
+  }
+  return `It is ${withArticle(itemName)}.`;
+}
+
+function withArticle(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return 'an item';
+  }
+  const first = trimmed.charAt(0).toLowerCase();
+  const article = 'aeiou'.includes(first) ? 'an' : 'a';
+  return `${article} ${trimmed.toLowerCase()}`;
 }
 
 

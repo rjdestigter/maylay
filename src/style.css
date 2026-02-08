@@ -65,6 +65,12 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+  align-items: center;
+}
+
+#audio-unlock {
+  border-color: #f2a65a;
+  background: #3f2a18;
 }
 
 #sentence-line,
@@ -93,8 +99,36 @@ body {
   padding: 4px;
 }
 
+#verb-bar {
+  background:
+    radial-gradient(circle at top, rgba(242, 166, 90, 0.25), transparent 46%),
+    linear-gradient(180deg, #1c2b40 0%, #0f1a2a 100%);
+  border-color: #4e3a22;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 222, 173, 0.3),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.45);
+  padding: 6px;
+  gap: 6px;
+}
+
 #inventory-bar {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+#inventory-bar {
+  background:
+    radial-gradient(circle at top left, rgba(226, 168, 94, 0.22), transparent 44%),
+    linear-gradient(180deg, #3a2717 0%, #24180f 100%);
+  border-color: #5f3f21;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 221, 173, 0.2),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.5);
+  padding: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 button {
@@ -115,16 +149,117 @@ button.active {
   color: #101010;
 }
 
-.inventory-item {
+#verb-bar .verb-button {
+  border: 1px solid #2d1d0f;
+  background:
+    linear-gradient(180deg, #7d5a35 0%, #5f4126 40%, #452d1a 100%);
+  color: #f7edd7;
+  border-radius: 14px 14px 10px 10px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 4px;
+  padding: 7px 10px;
+  font-family: "Palatino Linotype", "Book Antiqua", serif;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 227, 186, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 1px 0 rgba(0, 0, 0, 0.28);
+  transition: transform 90ms ease, filter 90ms ease, box-shadow 120ms ease;
+}
+
+#verb-bar .verb-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+#verb-bar .verb-button.active {
+  background:
+    linear-gradient(180deg, #f2c57a 0%, #d99645 45%, #ae6f2a 100%);
+  color: #1b120b;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 246, 220, 0.65),
+    inset 0 -1px 0 rgba(99, 56, 20, 0.42),
+    0 0 0 1px rgba(255, 233, 188, 0.75);
+}
+
+#verb-bar .verb-main {
+  font-size: clamp(10px, 1.35vw, 13px);
+  line-height: 1;
+}
+
+#verb-bar .verb-key {
+  font: 700 clamp(10px, 1.2vw, 12px)/1 monospace;
+  opacity: 0.8;
+}
+
+.inventory-item {
+  flex: 0 0 94px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 94px;
+  border: 1px solid #2b1b0f;
+  background:
+    linear-gradient(180deg, #8a633b 0%, #6f4f30 45%, #553b22 100%);
+  clip-path: polygon(9% 0, 91% 0, 100% 9%, 100% 91%, 91% 100%, 9% 100%, 0 91%, 0 9%);
+  padding: 8px 6px 7px;
+  color: #f4ead7;
+  font-family: "Palatino Linotype", "Book Antiqua", serif;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.inventory-item:hover {
+  filter: brightness(1.08);
+}
+
+.inventory-item.active {
+  background:
+    linear-gradient(180deg, #e9c58d 0%, #ce9d5f 45%, #a7773f 100%);
+  color: #2a180b;
+  box-shadow: 0 0 0 1px rgba(255, 229, 186, 0.8) inset;
+}
+
+.inventory-empty {
+  border: 1px dashed #6c4b2a;
+  background: rgba(36, 24, 14, 0.78);
+  color: rgba(244, 224, 192, 0.52);
+  font: 11px/1.1 monospace;
+  letter-spacing: 0.4px;
+  clip-path: polygon(5% 0, 95% 0, 100% 40%, 95% 100%, 5% 100%, 0 40%);
+  text-transform: uppercase;
+}
+
+.inventory-empty-state {
+  color: rgba(244, 224, 192, 0.72);
+  font: 11px/1.1 monospace;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 6px 8px;
+}
+
+.inventory-label {
+  font-size: clamp(9px, 1.08vw, 11px);
+  line-height: 1;
+  text-align: center;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inventory-icon {
-  width: 14px;
-  height: 14px;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  object-position: center;
+  flex: 0 0 40px;
+  overflow: hidden;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
