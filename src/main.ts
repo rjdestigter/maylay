@@ -319,11 +319,15 @@ async function bootstrap(): Promise<void> {
 
   verbBar.addEventListener('click', (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLButtonElement>('button[data-verb]');
+    if (!button) {
       return;
     }
 
-    const verb = target.dataset.verb;
+    const verb = button.dataset.verb;
     if (!isVerb(verb)) {
       return;
     }
@@ -334,11 +338,15 @@ async function bootstrap(): Promise<void> {
 
   inventoryBar.addEventListener('click', (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLButtonElement>('button[data-item-id]');
+    if (!button) {
       return;
     }
 
-    const itemId = target.dataset.itemId ?? null;
+    const itemId = button.dataset.itemId ?? null;
     actor.send({ type: 'INVENTORY_SELECTED', itemId });
   });
 

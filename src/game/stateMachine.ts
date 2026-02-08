@@ -51,6 +51,10 @@ export const gameMachine = setup({
     hasMoreDialogue: ({ context }) => context.dialogueIndex < context.dialogueLines.length - 1,
     shouldInspectInventory: ({ context, event }) =>
       event.type === 'INVENTORY_SELECTED' && event.itemId !== null && context.selectedVerb === 'LOOK',
+    shouldShowInventoryVerbFeedback: ({ context, event }) =>
+      event.type === 'INVENTORY_SELECTED'
+      && event.itemId !== null
+      && (context.selectedVerb === 'TALK' || context.selectedVerb === 'PICK_UP' || context.selectedVerb === 'OPEN'),
   },
   delays: {
     dialogueAutoAdvance: ({ context }) => {
@@ -69,6 +73,7 @@ export const gameMachine = setup({
       return {
         ...context,
         selectedVerb: event.verb,
+        selectedInventoryItemId: event.verb === 'USE' ? context.selectedInventoryItemId : null,
       };
     }),
     setHovered: assign(({ context, event }) => {
@@ -106,6 +111,20 @@ export const gameMachine = setup({
         selectedVerb: null,
         selectedInventoryItemId: null,
         dialogueLines: [inventoryLookLine(item.id, item.name)],
+        dialogueIndex: 0,
+      };
+    }),
+    showInventoryVerbFeedback: assign(({ context, event }) => {
+      if (event.type !== 'INVENTORY_SELECTED' || event.itemId === null || context.selectedVerb === null) {
+        return context;
+      }
+
+      const item = context.inventory.find((candidate) => candidate.id === event.itemId);
+      const itemName = item?.name ?? event.itemId;
+      return {
+        ...context,
+        selectedInventoryItemId: null,
+        dialogueLines: [inventoryVerbFeedbackLine(context.selectedVerb, itemName)],
         dialogueIndex: 0,
       };
     }),
@@ -197,6 +216,11 @@ export const gameMachine = setup({
             target: 'dialogue',
             actions: 'inspectInventoryItem',
           },
+          {
+            guard: 'shouldShowInventoryVerbFeedback',
+            target: 'dialogue',
+            actions: 'showInventoryVerbFeedback',
+          },
           { actions: 'setInventorySelection' },
         ],
         HOTSPOT_CLICKED: {
@@ -266,6 +290,19 @@ function inventoryLookLine(itemId: string, itemName: string): string {
   return `It is ${withArticle(itemName)}.`;
 }
 
+function inventoryVerbFeedbackLine(verb: Verb, itemName: string): string {
+  switch (verb) {
+    case 'TALK':
+      return `You attempt small talk with ${withArticle(itemName)}. It stays focused on being an object.`;
+    case 'PICK_UP':
+      return `You already picked up ${withArticle(itemName)}. Congratulations on your continued success.`;
+    case 'OPEN':
+      return `${capitalize(withArticle(itemName))} has no obvious hatch, lid, or dramatic reveal.`;
+    default:
+      return `That does not seem useful for ${withArticle(itemName)}.`;
+  }
+}
+
 function withArticle(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -274,6 +311,13 @@ function withArticle(name: string): string {
   const first = trimmed.charAt(0).toLowerCase();
   const article = 'aeiou'.includes(first) ? 'an' : 'a';
   return `${article} ${trimmed.toLowerCase()}`;
+}
+
+function capitalize(value: string): string {
+  if (!value) {
+    return value;
+  }
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
 
