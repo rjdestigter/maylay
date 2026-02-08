@@ -22,7 +22,18 @@ export interface RenderParams {
   devEditor: {
     enabled: boolean;
     selectedHotspotId: string | null;
-    editTarget: 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon';
+    editTarget: 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon' | 'perspective';
+    perspective?: {
+      farY: number;
+      nearY: number;
+      farScale: number;
+      nearScale: number;
+    };
+    actorBaseSize?: {
+      width: number;
+      height: number;
+    };
+    actorFeetY?: number;
   };
 }
 
@@ -74,7 +85,15 @@ export class Renderer {
     this.drawActor(actor);
 
     if (devEditor.enabled) {
-      this.drawDevOverlay(hotspots, walkablePolygon, devEditor.selectedHotspotId, devEditor.editTarget);
+      this.drawDevOverlay(
+        hotspots,
+        walkablePolygon,
+        devEditor.selectedHotspotId,
+        devEditor.editTarget,
+        devEditor.perspective,
+        devEditor.actorBaseSize,
+        devEditor.actorFeetY,
+      );
     }
 
     if (room.overlayText) {
@@ -169,7 +188,10 @@ export class Renderer {
     hotspots: Hotspot[],
     walkablePolygon: { x: number; y: number }[] | undefined,
     selectedHotspotId: string | null,
-    editTarget: 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon',
+    editTarget: 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon' | 'perspective',
+    perspective: { farY: number; nearY: number; farScale: number; nearScale: number } | undefined,
+    actorBaseSize: { width: number; height: number } | undefined,
+    actorFeetY: number | undefined,
   ): void {
     if (walkablePolygon && walkablePolygon.length > 0) {
       this.ctx.beginPath();
@@ -224,5 +246,77 @@ export class Renderer {
       }
       this.ctx.lineWidth = 1;
     }
+
+    if (editTarget === 'perspective' && perspective && actorBaseSize && typeof actorFeetY === 'number') {
+      this.drawPerspectiveOverlay(perspective, actorBaseSize, actorFeetY);
+    }
+  }
+
+  private drawPerspectiveOverlay(
+    perspective: { farY: number; nearY: number; farScale: number; nearScale: number },
+    actorBaseSize: { width: number; height: number },
+    actorFeetY: number,
+  ): void {
+    const farY = Math.round(perspective.farY);
+    const nearY = Math.round(perspective.nearY);
+
+    this.ctx.save();
+    this.ctx.setLineDash([3, 2]);
+    this.ctx.strokeStyle = '#7ec8ff';
+    this.ctx.lineWidth = 1;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, farY);
+    this.ctx.lineTo(this.width, farY);
+    this.ctx.stroke();
+
+    this.ctx.strokeStyle = '#ffd36e';
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, nearY);
+    this.ctx.lineTo(this.width, nearY);
+    this.ctx.stroke();
+    this.ctx.setLineDash([]);
+
+    const rulerX = this.width - 18;
+    this.ctx.strokeStyle = '#f7f7f7';
+    this.ctx.beginPath();
+    this.ctx.moveTo(rulerX, farY);
+    this.ctx.lineTo(rulerX, nearY);
+    this.ctx.stroke();
+
+    this.ctx.fillStyle = '#7ec8ff';
+    this.ctx.fillRect(rulerX - 2, farY - 2, 4, 4);
+    this.ctx.fillStyle = '#ffd36e';
+    this.ctx.fillRect(rulerX - 2, nearY - 2, 4, 4);
+
+    const farH = Math.round(actorBaseSize.height * perspective.farScale);
+    const nearH = Math.round(actorBaseSize.height * perspective.nearScale);
+    const farW = Math.round(actorBaseSize.width * perspective.farScale);
+    const nearW = Math.round(actorBaseSize.width * perspective.nearScale);
+    const sampleX = 14;
+
+    this.ctx.strokeStyle = 'rgba(126, 200, 255, 0.95)';
+    this.ctx.strokeRect(sampleX, farY - farH, farW, farH);
+    this.ctx.strokeStyle = 'rgba(255, 211, 110, 0.95)';
+    this.ctx.strokeRect(sampleX + farW + 4, nearY - nearH, nearW, nearH);
+
+    const tRaw = (actorFeetY - perspective.farY) / ((perspective.nearY - perspective.farY) || 0.0001);
+    const t = Math.max(0, Math.min(1, tRaw));
+    const currentScale = perspective.farScale + (perspective.nearScale - perspective.farScale) * t;
+    const currentH = Math.round(actorBaseSize.height * currentScale);
+    const currentW = Math.round(actorBaseSize.width * currentScale);
+    const currentX = Math.round(this.width * 0.5 - currentW * 0.5);
+    const currentY = Math.round(actorFeetY);
+
+    this.ctx.strokeStyle = 'rgba(255, 92, 162, 0.95)';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(currentX, currentY - currentH, currentW, currentH);
+    this.ctx.lineWidth = 1;
+
+    this.ctx.fillStyle = '#f7f7f7';
+    this.ctx.font = '10px monospace';
+    this.ctx.fillText(`farY ${farY}`, 4, Math.max(10, farY - 4));
+    this.ctx.fillText(`nearY ${nearY}`, 4, Math.max(10, nearY - 4));
+    this.ctx.fillText(`scale ${currentScale.toFixed(2)}x`, currentX + 2, Math.max(10, currentY - currentH - 3));
+    this.ctx.restore();
   }
 }

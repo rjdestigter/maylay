@@ -64,6 +64,7 @@ body {
 #audio-bar {
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
 }
 
 #sentence-line,
@@ -142,6 +143,61 @@ button.active {
 
 #dev-panel.hidden {
   display: none;
+}
+
+#dev-gui {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.dev-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.dev-label {
+  min-width: 86px;
+  color: #d4c9a7;
+  font: 11px/1.2 monospace;
+}
+
+.dev-chip {
+  border: 1px solid #0d1119;
+  background: #203250;
+  color: var(--text);
+  font: 11px/1.2 monospace;
+  padding: 3px 6px;
+}
+
+.dev-chip.active {
+  background: #f2a65a;
+  color: #141414;
+}
+
+.dev-chip.muted {
+  opacity: 0.65;
+}
+
+.dev-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 11px/1.2 monospace;
+  color: #e8e2ca;
+}
+
+.dev-status.muted {
+  opacity: 0.75;
+}
+
+.dev-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #39c5ff;
 }
 
 #dev-info {

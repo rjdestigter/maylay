@@ -28,6 +28,12 @@ export interface RoomDefinition {
   backgroundColor: string;
   hotspots: Hotspot[];
   walkablePolygon?: Point[];
+  perspective?: {
+    farY: number;
+    nearY: number;
+    farScale: number;
+    nearScale: number;
+  };
   overlayText?: string;
 }
 

@@ -6,6 +6,13 @@ export const room1: RoomDefinition = {
   width: 320,
   height: 180,
   backgroundColor: '#264653',
+  perspective: {
+    // Smaller near the horizon, larger near the bottom of the screen.
+    farY: 70,
+    nearY: 179,
+    farScale: 0.32,
+    nearScale: 1,
+  },
   walkablePolygon: [
     { x: 71, y: 179 },
     { x: 62, y: 160 },
@@ -73,6 +80,12 @@ export const room2: RoomDefinition = {
   width: 320,
   height: 180,
   backgroundColor: '#1d3557',
+  perspective: {
+    farY: 70,
+    nearY: 179,
+    farScale: 0.72,
+    nearScale: 1,
+  },
   hotspots: [],
   overlayText: 'Room 2 placeholder: You made it!',
 };

@@ -1,5 +1,6 @@
 ﻿import './style.css';
 import musicRoom1Url from './assets/music_room1.mp3';
+import forestAmbienceUrl from './assets/forest_ambience.mp3';
 
 import { createActor } from 'xstate';
 import { createAssets, type AssetStore } from './engine/assets';
@@ -15,7 +16,21 @@ const STOP_DISTANCE = 2;
 const WALK_CYCLE_HZ = 4;
 const IDLE_CYCLE_HZ = 0.75;
 const VERBS: Verb[] = ['LOOK', 'TALK', 'PICK_UP', 'USE', 'OPEN'];
-type DevEditTarget = 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon';
+type DevEditTarget = 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon' | 'perspective';
+type DevPerspectiveField = 'farY' | 'nearY' | 'farScale' | 'nearScale';
+const DEV_TARGETS: Array<{ value: DevEditTarget; label: string; key: string }> = [
+  { value: 'bounds', label: 'Hotspot', key: '1' },
+  { value: 'spriteBounds', label: 'Sprite', key: '2' },
+  { value: 'walkTarget', label: 'Walk Target', key: '3' },
+  { value: 'walkablePolygon', label: 'Walkable Poly', key: '4' },
+  { value: 'perspective', label: 'Perspective', key: '5' },
+];
+const DEV_PERSPECTIVE_FIELDS: Array<{ value: DevPerspectiveField; label: string; key: string }> = [
+  { value: 'farY', label: 'farY', key: 'Q' },
+  { value: 'nearY', label: 'nearY', key: 'W' },
+  { value: 'farScale', label: 'farScale', key: 'E' },
+  { value: 'nearScale', label: 'nearScale', key: 'R' },
+];
 
 void bootstrap();
 
@@ -27,7 +42,10 @@ async function bootstrap(): Promise<void> {
   const dialoguePanel = getRequiredElement<HTMLDivElement>('dialogue-panel');
   const dialogueText = getRequiredElement<HTMLParagraphElement>('dialogue-text');
   const musicToggle = getRequiredElement<HTMLButtonElement>('music-toggle');
+  const sfxToggle = getRequiredElement<HTMLButtonElement>('sfx-toggle');
+  const voiceToggle = getRequiredElement<HTMLButtonElement>('voice-toggle');
   const devPanel = getRequiredElement<HTMLDivElement>('dev-panel');
+  const devGui = getRequiredElement<HTMLDivElement>('dev-gui');
   const devInfo = getRequiredElement<HTMLPreElement>('dev-info');
   const devCopy = getRequiredElement<HTMLButtonElement>('dev-copy');
 
@@ -37,6 +55,7 @@ async function bootstrap(): Promise<void> {
   let debugHotspots = false;
   let devMode = false;
   let devEditTarget: DevEditTarget = 'bounds';
+  let devPerspectiveField: DevPerspectiveField = 'farY';
   let selectedHotspotId: string | null = null;
 
   let actorPosition = { x: 96, y: 150 };
@@ -48,7 +67,13 @@ async function bootstrap(): Promise<void> {
   let currentWalkPath: { x: number; y: number }[] = [];
   let currentWalkKey: string | null = null;
   const backgroundMusic = createBackgroundMusic(musicRoom1Url);
+  const backgroundSfx = createBackgroundMusic(forestAmbienceUrl);
+  const voicePlayer = createVoicePlayer();
   let musicEnabled = false;
+  let sfxEnabled = false;
+  let voiceEnabled = false;
+  let wasInDialogue = false;
+  let lastSpokenDialogueKey: string | null = null;
 
   const setMusicEnabled = (enabled: boolean): void => {
     musicEnabled = enabled;
@@ -66,6 +91,54 @@ async function bootstrap(): Promise<void> {
   musicToggle.addEventListener('click', () => {
     setMusicEnabled(!musicEnabled);
   });
+
+  const setSfxEnabled = (enabled: boolean): void => {
+    sfxEnabled = enabled;
+    if (enabled) {
+      void backgroundSfx.play().catch(() => {
+        sfxEnabled = false;
+        sfxToggle.textContent = 'SFX: Off';
+      });
+    } else {
+      backgroundSfx.pause();
+    }
+    sfxToggle.textContent = sfxEnabled ? 'SFX: On' : 'SFX: Off';
+  };
+
+  sfxToggle.addEventListener('click', () => {
+    setSfxEnabled(!sfxEnabled);
+  });
+
+  const setVoiceEnabled = (enabled: boolean): void => {
+    if (!voicePlayer.isSupported()) {
+      voiceEnabled = false;
+      voiceToggle.textContent = 'Voice: Unavailable';
+      voiceToggle.disabled = true;
+      return;
+    }
+    voiceEnabled = enabled;
+    voiceToggle.textContent = voiceEnabled ? 'Voice: On' : 'Voice: Off';
+    if (!voiceEnabled) {
+      voicePlayer.cancel();
+      return;
+    }
+    voicePlayer.speak('Voice enabled.');
+    const snapshot = actor.getSnapshot();
+    if (snapshot.matches('dialogue')) {
+      const line = snapshot.context.dialogueLines[snapshot.context.dialogueIndex];
+      if (line) {
+        voicePlayer.speak(line);
+      }
+    }
+  };
+
+  voiceToggle.addEventListener('click', () => {
+    setVoiceEnabled(!voiceEnabled);
+  });
+  if (!voicePlayer.isSupported()) {
+    voiceToggle.textContent = 'Voice: Unavailable';
+    voiceToggle.disabled = true;
+  }
 
   const input = createInputController({
     canvas,
@@ -153,22 +226,78 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
+    voicePlayer.cancel();
     actor.send({ type: 'DIALOGUE_ADVANCE' });
   });
 
   devCopy.addEventListener('click', () => {
     void copyCurrentRoomHotspots(actor.getSnapshot().context);
   });
+  devPanel.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+    let changed = false;
+
+    const nextTarget = target.dataset.devTarget;
+    if (isDevEditTarget(nextTarget)) {
+      devEditTarget = nextTarget;
+      changed = true;
+    }
+    if (!changed) {
+      const nextField = target.dataset.devPerspectiveField;
+      if (isDevPerspectiveField(nextField)) {
+        devPerspectiveField = nextField;
+        changed = true;
+      }
+    }
+    if (!changed) {
+      const deltaRaw = target.dataset.devAdjust;
+      if (deltaRaw) {
+        const delta = Number.parseInt(deltaRaw, 10);
+        if (Number.isFinite(delta)) {
+          adjustRoomPerspective(actor.getSnapshot().context, delta);
+          changed = true;
+        }
+      }
+    }
+    if (!changed && target.dataset.devAction === 'clear-selection') {
+      selectedHotspotId = null;
+      changed = true;
+    }
+    if (changed) {
+      const snapshot = actor.getSnapshot();
+      renderUi(snapshot.context, snapshot.matches('dialogue'));
+    }
+  });
 
   actor.subscribe((snapshot) => {
     const context = snapshot.context;
-    renderUi(context, snapshot.matches('dialogue'));
+    const inDialogue = snapshot.matches('dialogue');
+    renderUi(context, inDialogue);
+
+    if (voiceEnabled && inDialogue) {
+      const line = context.dialogueLines[context.dialogueIndex] ?? '';
+      const speakKey = `${context.currentRoomId}:${context.dialogueIndex}:${line}`;
+      if (line && speakKey !== lastSpokenDialogueKey) {
+        voicePlayer.speak(line);
+        lastSpokenDialogueKey = speakKey;
+      }
+    }
+    if (!inDialogue && wasInDialogue) {
+      voicePlayer.cancel();
+      lastSpokenDialogueKey = null;
+    }
+    wasInDialogue = inDialogue;
 
     if (context.currentRoomId !== previousRoomId) {
       previousRoomId = context.currentRoomId;
       actorPosition = spawnPointForRoom(context.currentRoomId);
       currentWalkPath = [];
       currentWalkKey = null;
+      voicePlayer.cancel();
+      lastSpokenDialogueKey = null;
     }
   });
 
@@ -176,8 +305,14 @@ async function bootstrap(): Promise<void> {
   actor.send({ type: 'BOOTED' });
 
   const onKeyDown = (event: KeyboardEvent): void => {
+    const refreshUi = (): void => {
+      const snapshot = actor.getSnapshot();
+      renderUi(snapshot.context, snapshot.matches('dialogue'));
+    };
+
     if (event.key === 'F2') {
       debugHotspots = !debugHotspots;
+      refreshUi();
       event.preventDefault();
       return;
     }
@@ -187,6 +322,7 @@ async function bootstrap(): Promise<void> {
       if (!devMode) {
         selectedHotspotId = null;
       }
+      refreshUi();
       event.preventDefault();
       return;
     }
@@ -197,21 +333,55 @@ async function bootstrap(): Promise<void> {
 
     if (event.key === '1') {
       devEditTarget = 'bounds';
+      refreshUi();
       event.preventDefault();
       return;
     }
     if (event.key === '2') {
       devEditTarget = 'spriteBounds';
+      refreshUi();
       event.preventDefault();
       return;
     }
     if (event.key === '3') {
       devEditTarget = 'walkTarget';
+      refreshUi();
       event.preventDefault();
       return;
     }
     if (event.key === '4') {
       devEditTarget = 'walkablePolygon';
+      refreshUi();
+      event.preventDefault();
+      return;
+    }
+    if (event.key === '5') {
+      devEditTarget = 'perspective';
+      refreshUi();
+      event.preventDefault();
+      return;
+    }
+    if (event.key.toLowerCase() === 'q') {
+      devPerspectiveField = 'farY';
+      refreshUi();
+      event.preventDefault();
+      return;
+    }
+    if (event.key.toLowerCase() === 'w') {
+      devPerspectiveField = 'nearY';
+      refreshUi();
+      event.preventDefault();
+      return;
+    }
+    if (event.key.toLowerCase() === 'e') {
+      devPerspectiveField = 'farScale';
+      refreshUi();
+      event.preventDefault();
+      return;
+    }
+    if (event.key.toLowerCase() === 'r') {
+      devPerspectiveField = 'nearScale';
+      refreshUi();
       event.preventDefault();
       return;
     }
@@ -233,11 +403,21 @@ async function bootstrap(): Promise<void> {
 
     const moveStep = event.shiftKey ? 5 : 1;
     if (event.key === 'ArrowLeft') {
+      if (devEditTarget === 'perspective') {
+        adjustRoomPerspective(actor.getSnapshot().context, -moveStep);
+        event.preventDefault();
+        return;
+      }
       adjustSelectedHotspot(actor.getSnapshot().context, -moveStep, 0, 0, 0);
       event.preventDefault();
       return;
     }
     if (event.key === 'ArrowRight') {
+      if (devEditTarget === 'perspective') {
+        adjustRoomPerspective(actor.getSnapshot().context, moveStep);
+        event.preventDefault();
+        return;
+      }
       adjustSelectedHotspot(actor.getSnapshot().context, moveStep, 0, 0, 0);
       event.preventDefault();
       return;
@@ -304,12 +484,14 @@ async function bootstrap(): Promise<void> {
     if (!room) {
       return;
     }
+    const perspectiveScale = getPerspectiveScale(room, actorPosition.y);
 
     renderer.render({
       room,
       actor: {
         ...actorPosition,
-        ...actorSize,
+        width: actorSize.width * perspectiveScale,
+        height: actorSize.height * perspectiveScale,
         facing: actorFacing,
         isWalking,
         walkCycle: actorCycle,
@@ -323,6 +505,9 @@ async function bootstrap(): Promise<void> {
         enabled: devMode,
         selectedHotspotId,
         editTarget: devEditTarget,
+        perspective: room.perspective,
+        actorBaseSize: { ...actorSize },
+        actorFeetY: actorPosition.y,
       },
     });
   }
@@ -482,20 +667,61 @@ async function bootstrap(): Promise<void> {
   function renderDevPanel(context: GameContext): void {
     devPanel.classList.toggle('hidden', !devMode);
     if (!devMode) {
+      devGui.innerHTML = '';
       return;
     }
 
     const room = rooms[context.currentRoomId];
     const hotspot = room?.hotspots.find((spot) => spot.id === selectedHotspotId) ?? null;
+    const perspective = ensureRoomPerspective(room ?? rooms.room1);
+    const selectedStatus = hotspot
+      ? `<span class="dev-status"><span class="dev-status-dot"></span>Selected: ${hotspot.id}</span>`
+      : '<span class="dev-status muted">Selected: none</span>';
+    const targetButtons = DEV_TARGETS.map((option) => {
+      const active = option.value === devEditTarget ? 'active' : '';
+      return `<button type="button" class="dev-chip ${active}" data-dev-target="${option.value}">${option.label} [${option.key}]</button>`;
+    }).join('');
+    const perspectiveFieldButtons = DEV_PERSPECTIVE_FIELDS.map((field) => {
+      const active = field.value === devPerspectiveField ? 'active' : '';
+      const muted = devEditTarget === 'perspective' ? '' : 'muted';
+      return `<button type="button" class="dev-chip ${active} ${muted}" data-dev-perspective-field="${field.value}">${field.label} [${field.key}]</button>`;
+    }).join('');
+    const perspectiveAdjustClass = devEditTarget === 'perspective' ? '' : 'muted';
+    devGui.innerHTML = `
+      <div class="dev-row">
+        <span class="dev-label">Selection</span>
+        ${selectedStatus}
+        <button type="button" class="dev-chip" data-dev-action="clear-selection">Clear</button>
+      </div>
+      <div class="dev-row">
+        <span class="dev-label">Edit Target</span>
+        ${targetButtons}
+      </div>
+      <div class="dev-row">
+        <span class="dev-label">Persp Field</span>
+        ${perspectiveFieldButtons}
+      </div>
+      <div class="dev-row">
+        <span class="dev-label">Persp Adjust</span>
+        <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="-5">-5</button>
+        <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="-1">-1</button>
+        <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="1">+1</button>
+        <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="5">+5</button>
+      </div>
+    `;
+
     const line1 = `DEV EDITOR (F3): ${context.currentRoomId}`;
-    const line2 = `Target [1/2/3/4]: ${devEditTarget}`;
-    const line3 = hotspot ? `Selected: ${hotspot.id}` : 'Selected: (click a hotspot)';
+    const line2 = `Target [1/2/3/4/5]: ${devEditTarget}`;
+    const line3 = hotspot ? `Selected: ${hotspot.id}` : 'Selected: none';
     const line4 = `Actor size +/-: ${actorSize.width}x${actorSize.height}`;
-    const line5 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
-    const line6 = 'Move: arrows (Shift=5px) | Rect size: [ ] and ; \'';
-    const line7 = 'Polygon mode: click add, Shift+click undo, Ctrl+click clear';
-    const line8 = 'Copy room JSON: C or button';
-    devInfo.textContent = [line1, line2, line3, line4, line5, line6, line7, line8].join('\n');
+    const line5 = `Actor render scale: ${getPerspectiveScale(room ?? rooms.room1, actorPosition.y).toFixed(2)}x`;
+    const line6 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
+    const line7 = `Perspective field [Q/W/E/R]: ${devPerspectiveField}`;
+    const line8 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
+    const line9 = 'Move: arrows (Shift=5px) | Rect size: [ ] and ; \'';
+    const line10 = 'Polygon mode: click add, Shift+click undo, Ctrl+click clear';
+    const line11 = 'Copy room JSON: C or button';
+    devInfo.textContent = [line1, line2, line3, line4, line5, line6, line7, line8, line9, line10, line11].join('\n');
   }
 
   function buildSentenceLine(context: GameContext, hoveredHotspotId: string | null, hoverWalkable: boolean): string {
@@ -572,6 +798,9 @@ async function bootstrap(): Promise<void> {
     if (devEditTarget === 'walkablePolygon') {
       return;
     }
+    if (devEditTarget === 'perspective') {
+      return;
+    }
 
     const rect = getEditableRect(hotspot, devEditTarget);
     rect.x += dx;
@@ -611,10 +840,35 @@ async function bootstrap(): Promise<void> {
     actorSize.height = clamp(actorSize.height + dh * step, 16, 180);
   }
 
+  function adjustRoomPerspective(context: GameContext, delta: number): void {
+    const room = rooms[context.currentRoomId];
+    if (!room) {
+      return;
+    }
+    const perspective = ensureRoomPerspective(room);
+    if (devPerspectiveField === 'farY') {
+      perspective.farY = clamp(perspective.farY + delta, 0, perspective.nearY - 1);
+      return;
+    }
+    if (devPerspectiveField === 'nearY') {
+      perspective.nearY = clamp(perspective.nearY + delta, perspective.farY + 1, room.height);
+      return;
+    }
+
+    const scaleStep = delta * 0.01;
+    if (devPerspectiveField === 'farScale') {
+      perspective.farScale = clamp(perspective.farScale + scaleStep, 0.25, perspective.nearScale);
+      return;
+    }
+    perspective.nearScale = clamp(perspective.nearScale + scaleStep, perspective.farScale, 4);
+  }
+
   window.addEventListener('beforeunload', () => {
     input.destroy();
     window.removeEventListener('keydown', onKeyDown);
     backgroundMusic.pause();
+    backgroundSfx.pause();
+    voicePlayer.cancel();
   });
 }
 
@@ -625,6 +879,58 @@ function createBackgroundMusic(src: string): HTMLAudioElement {
   audio.preload = 'auto';
   audio.volume = 0.45;
   return audio;
+}
+
+function createVoicePlayer(): { speak: (text: string) => void; cancel: () => void; isSupported: () => boolean } {
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+  const supportsUtterance = typeof window !== 'undefined' && 'SpeechSynthesisUtterance' in window;
+  if (!synth || !supportsUtterance) {
+    return {
+      speak: (): void => {},
+      cancel: (): void => {},
+      isSupported: (): boolean => false,
+    };
+  }
+
+  let preferredVoice: SpeechSynthesisVoice | null = null;
+
+  const selectVoice = (): SpeechSynthesisVoice | null => {
+    const voices = synth.getVoices();
+    if (voices.length === 0) {
+      return null;
+    }
+    const english = voices.find((voice) => voice.lang.toLowerCase().startsWith('en'));
+    return english ?? voices[0];
+  };
+
+  const loadPreferredVoice = (): void => {
+    preferredVoice = selectVoice();
+  };
+  loadPreferredVoice();
+  synth.addEventListener('voiceschanged', loadPreferredVoice);
+
+  return {
+    speak: (text: string): void => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        return;
+      }
+      synth.resume();
+      synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(trimmed);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      const voice = preferredVoice ?? selectVoice();
+      if (voice) {
+        utterance.voice = voice;
+      }
+      synth.speak(utterance);
+    },
+    cancel: (): void => {
+      synth.cancel();
+    },
+    isSupported: (): boolean => true,
+  };
 }
 
 function computeWalkPath(
@@ -861,6 +1167,31 @@ function getEditableRect(hotspot: Hotspot, target: 'bounds' | 'spriteBounds'): R
   return hotspot.bounds;
 }
 
+function getPerspectiveScale(room: { perspective?: { farY: number; nearY: number; farScale: number; nearScale: number } }, actorY: number): number {
+  const perspective = ensureRoomPerspective(room);
+
+  const deltaY = perspective.nearY - perspective.farY;
+  if (Math.abs(deltaY) < 0.0001) {
+    return clamp(perspective.nearScale, 0.25, 4);
+  }
+
+  const t = clamp((actorY - perspective.farY) / deltaY, 0, 1);
+  const scale = perspective.farScale + (perspective.nearScale - perspective.farScale) * t;
+  return clamp(scale, 0.25, 4);
+}
+
+function ensureRoomPerspective(room: { perspective?: { farY: number; nearY: number; farScale: number; nearScale: number } }): { farY: number; nearY: number; farScale: number; nearScale: number } {
+  if (!room.perspective) {
+    room.perspective = {
+      farY: 70,
+      nearY: 179,
+      farScale: 0.72,
+      nearScale: 1,
+    };
+  }
+  return room.perspective;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -893,6 +1224,18 @@ function getRequiredElement<T extends HTMLElement>(id: string): T {
 
 function isVerb(value: string | undefined): value is Verb {
   return value === 'LOOK' || value === 'TALK' || value === 'PICK_UP' || value === 'USE' || value === 'OPEN';
+}
+
+function isDevEditTarget(value: string | undefined): value is DevEditTarget {
+  return value === 'bounds'
+    || value === 'spriteBounds'
+    || value === 'walkTarget'
+    || value === 'walkablePolygon'
+    || value === 'perspective';
+}
+
+function isDevPerspectiveField(value: string | undefined): value is DevPerspectiveField {
+  return value === 'farY' || value === 'nearY' || value === 'farScale' || value === 'nearScale';
 }
 
 

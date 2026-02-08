@@ -1,7 +1,8 @@
 ﻿import { assign, setup } from 'xstate';
 import type { PendingInteraction, ScriptResult, Verb, InventoryItem, Point } from './types';
 
-const DIALOGUE_AUTO_ADVANCE_MS = 1800;
+const DIALOGUE_AUTO_ADVANCE_MIN_MS = 1800;
+const DIALOGUE_AUTO_ADVANCE_MAX_MS = 6000;
 
 export interface GameContext {
   currentRoomId: string;
@@ -48,6 +49,14 @@ export const gameMachine = setup({
   guards: {
     hasDialogue: ({ event }) => event.type === 'SCRIPT_RESOLVED' && event.result.dialogueLines.length > 0,
     hasMoreDialogue: ({ context }) => context.dialogueIndex < context.dialogueLines.length - 1,
+  },
+  delays: {
+    dialogueAutoAdvance: ({ context }) => {
+      const line = context.dialogueLines[context.dialogueIndex] ?? '';
+      // Scale hold time by line length so longer spoken lines are not cut off.
+      const estimate = 1200 + line.length * 55;
+      return clamp(Math.round(estimate), DIALOGUE_AUTO_ADVANCE_MIN_MS, DIALOGUE_AUTO_ADVANCE_MAX_MS);
+    },
   },
   actions: {
     setVerb: assign(({ context, event }) => {
@@ -191,7 +200,7 @@ export const gameMachine = setup({
     },
     dialogue: {
       after: {
-        [DIALOGUE_AUTO_ADVANCE_MS]: [
+        dialogueAutoAdvance: [
           {
             guard: 'hasMoreDialogue',
             actions: 'advanceDialogue',
@@ -217,6 +226,10 @@ export const gameMachine = setup({
     },
   },
 });
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
 
 
