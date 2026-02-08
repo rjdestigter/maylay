@@ -143,16 +143,26 @@ const INTERACTIONS = loadInteractionsConfig(interactionsJson);
 export function resolveInteraction(context: GameContext, hotspot: Hotspot): ScriptResult {
   const verb = context.pendingInteraction?.verb ?? context.selectedVerb;
   const selectedItem = context.pendingInteraction?.inventoryItemId ?? context.selectedInventoryItemId;
+  const isSelf = hotspot.id === '__self__';
 
   if (verb === 'LOOK') {
+    if (isSelf) {
+      return { dialogueLines: ['A daring adventurer with excellent taste in verbs.'] };
+    }
     return { dialogueLines: [lookLineFor(hotspot, context.flags)] };
   }
 
   if (verb === 'TALK') {
+    if (isSelf) {
+      return { dialogueLines: ['You give yourself a pep talk. The reviews are mixed but encouraging.'] };
+    }
     return { dialogueLines: [talkLineFor(hotspot.id)] };
   }
 
   if (verb === 'PICK_UP') {
+    if (isSelf) {
+      return { dialogueLines: ['You attempt to pick yourself up. Philosophically successful.'] };
+    }
     if (hotspot.id !== 'key') {
       return { dialogueLines: [pickUpFailureLine(hotspot.id, hotspot.name)] };
     }
@@ -169,6 +179,12 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
   }
 
   if (verb === 'USE') {
+    if (isSelf) {
+      if (selectedItem === null) {
+        return { dialogueLines: ['Use what on yourself? Confidence is not currently in your inventory.'] };
+      }
+      return { dialogueLines: [`You try ${selectedItem} on yourself. A bold experiment in questionable judgment.`] };
+    }
     if (hotspot.id === 'door' && context.flags.doorOpen && selectedItem === null) {
       return {
         dialogueLines: [INTERACTIONS.use.doorOpenNoItemEnter],
@@ -200,6 +216,9 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
   }
 
   if (verb === 'OPEN') {
+    if (isSelf) {
+      return { dialogueLines: ['You are already open-minded. Physically opening is not recommended.'] };
+    }
     if (hotspot.id !== 'door') {
       return { dialogueLines: [openFailureLine(hotspot.id, hotspot.name)] };
     }

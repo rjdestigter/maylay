@@ -15,6 +15,7 @@ const WALK_SPEED = 80;
 const STOP_DISTANCE = 2;
 const WALK_CYCLE_HZ = 4;
 const IDLE_CYCLE_HZ = 0.75;
+const SELF_HOTSPOT_ID = '__self__';
 const VERBS: Verb[] = ['LOOK', 'TALK', 'PICK_UP', 'USE', 'OPEN'];
 const CURSOR_IDLE = makeCursorCss(
   `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
@@ -263,7 +264,7 @@ async function bootstrap(): Promise<void> {
 
   const input = createInputController({
     canvas,
-    getHotspots: () => getVisibleHotspots(actor.getSnapshot().context),
+    getHotspots: () => getInputHotspots(actor.getSnapshot().context),
     sendEvent: (event) => actor.send(event),
     onPointerMove: (point, hotspot) => {
       if (!point || hotspot) {
@@ -312,7 +313,7 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
-      selectedHotspotId = hotspot?.id ?? null;
+      selectedHotspotId = hotspot?.id === SELF_HOTSPOT_ID ? null : hotspot?.id ?? null;
     },
   });
 
@@ -728,7 +729,9 @@ async function bootstrap(): Promise<void> {
     }
 
     const room = rooms[context.currentRoomId];
-    const hotspot = room?.hotspots.find((spot) => spot.id === pending.hotspotId);
+    const hotspot = pending.hotspotId === SELF_HOTSPOT_ID
+      ? getSelfHotspot(context)
+      : room?.hotspots.find((spot) => spot.id === pending.hotspotId);
     if (!room || !hotspot) {
       actor.send({
         type: 'SCRIPT_RESOLVED',
@@ -895,9 +898,19 @@ async function bootstrap(): Promise<void> {
     }
 
     const room = rooms[context.currentRoomId];
-    const hotspotName = room?.hotspots.find((spot) => spot.id === hoveredHotspotId)?.name ?? '';
+    const hotspotName = hoveredHotspotId === SELF_HOTSPOT_ID
+      ? 'yourself'
+      : room?.hotspots.find((spot) => spot.id === hoveredHotspotId)?.name ?? '';
     const selectedItemName =
       context.inventory.find((item) => item.id === context.selectedInventoryItemId)?.name ?? context.selectedInventoryItemId;
+
+    if (hoveredHotspotId === SELF_HOTSPOT_ID && context.selectedVerb === null) {
+      return {
+        prefix: 'That is',
+        target: 'you',
+        muted: true,
+      };
+    }
 
     if (hotspotName && context.selectedVerb === null) {
       return {
@@ -950,6 +963,27 @@ async function bootstrap(): Promise<void> {
     }
 
     return room.hotspots.filter((spot) => isHotspotVisible(context.currentRoomId, spot.id, context.flags));
+  }
+
+  function getInputHotspots(context: GameContext): Hotspot[] {
+    return [getSelfHotspot(context), ...getVisibleHotspots(context)];
+  }
+
+  function getSelfHotspot(context: GameContext): Hotspot {
+    const room = rooms[context.currentRoomId] ?? rooms.room1;
+    const perspectiveScale = getPerspectiveScale(room, actorPosition.y);
+    const width = Math.max(8, Math.round(actorSize.width * perspectiveScale));
+    const height = Math.max(8, Math.round(actorSize.height * perspectiveScale));
+    const x = Math.round(actorPosition.x - width / 2);
+    const y = Math.round(actorPosition.y - height);
+
+    return {
+      id: SELF_HOTSPOT_ID,
+      name: 'yourself',
+      description: 'That is you. Looking confident and at least mostly in control.',
+      bounds: { x, y, w: width, h: height },
+      walkTarget: { x: actorPosition.x, y: actorPosition.y },
+    };
   }
 
   function spawnPointForRoom(roomId: string): { x: number; y: number } {
@@ -1624,6 +1658,3 @@ function makeWalkCursorCss(yOffset: number): string {
   </svg>`;
   return makeCursorCss(svg, 17, 28, 'pointer');
 }
-
-
-
