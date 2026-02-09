@@ -1,7 +1,7 @@
 import fallbackJson from './dialogue/fallbacks.json';
 import interactionsJson from './dialogue/interactions.json';
 import type { GameContext } from './stateMachine';
-import type { Hotspot, ScriptResult, Verb } from './types';
+import type { Hotspot, RoomDefinition, RoomScriptRule, ScriptResult, Verb } from './types';
 
 type FallbackConfig = {
   lookDefault: string[];
@@ -140,10 +140,15 @@ const DEFAULT_INTERACTIONS: InteractionLinesConfig = {
 const FALLBACKS = loadFallbackConfig(fallbackJson);
 const INTERACTIONS = loadInteractionsConfig(interactionsJson);
 
-export function resolveInteraction(context: GameContext, hotspot: Hotspot): ScriptResult {
+export function resolveInteraction(context: GameContext, room: RoomDefinition, hotspot: Hotspot): ScriptResult {
   const verb = context.pendingInteraction?.verb ?? context.selectedVerb;
   const selectedItem = context.pendingInteraction?.inventoryItemId ?? context.selectedInventoryItemId;
   const isSelf = hotspot.id === '__self__';
+
+  const scriptedResult = resolveScriptedRule(room.scripts, hotspot.id, verb, selectedItem, context.flags);
+  if (scriptedResult) {
+    return scriptedResult;
+  }
 
   if (verb === 'LOOK') {
     if (isSelf) {
@@ -244,6 +249,62 @@ export function resolveInteraction(context: GameContext, hotspot: Hotspot): Scri
   }
 
   return { dialogueLines: [pickRandomLine(FALLBACKS.genericDefault)] };
+}
+
+function resolveScriptedRule(
+  rules: RoomScriptRule[] | undefined,
+  hotspotId: string,
+  verb: Verb | null,
+  selectedItemId: string | null,
+  flags: Record<string, boolean>,
+): ScriptResult | null {
+  if (!rules || !verb) {
+    return null;
+  }
+  for (const rule of rules) {
+    if (rule.hotspotId !== hotspotId || rule.verb !== verb) {
+      continue;
+    }
+    if (rule.requireNoInventoryItem && selectedItemId !== null) {
+      continue;
+    }
+    if (rule.inventoryItemId && rule.inventoryItemId !== selectedItemId) {
+      continue;
+    }
+    if (!conditionsMatch(rule, flags)) {
+      continue;
+    }
+    return cloneScriptResult(rule.result);
+  }
+  return null;
+}
+
+function conditionsMatch(rule: RoomScriptRule, flags: Record<string, boolean>): boolean {
+  const conditions = rule.conditions;
+  if (!conditions) {
+    return true;
+  }
+  if (conditions.flagsAll && conditions.flagsAll.some((flag) => !flags[flag])) {
+    return false;
+  }
+  if (conditions.flagsNot && conditions.flagsNot.some((flag) => flags[flag])) {
+    return false;
+  }
+  if (conditions.flagsAny && conditions.flagsAny.length > 0 && !conditions.flagsAny.some((flag) => flags[flag])) {
+    return false;
+  }
+  return true;
+}
+
+function cloneScriptResult(result: ScriptResult): ScriptResult {
+  return {
+    dialogueLines: [...result.dialogueLines],
+    setFlags: result.setFlags ? { ...result.setFlags } : undefined,
+    addInventoryItem: result.addInventoryItem ? { ...result.addInventoryItem } : undefined,
+    removeInventoryItemId: result.removeInventoryItemId,
+    roomChangeTo: result.roomChangeTo,
+    clearSelectedInventory: result.clearSelectedInventory,
+  };
 }
 
 function lookLineFor(hotspot: Hotspot, flags: Record<string, boolean>): string {

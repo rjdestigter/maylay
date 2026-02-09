@@ -16,8 +16,8 @@
         "h": 29
       },
       "walkTarget": {
-        "x": 244,
-        "y": 136
+        "x": 259,
+        "y": 121
       }
     },
     {
@@ -30,10 +30,10 @@
         "h": 62
       },
       "spriteBounds": {
-        "x": 215,
-        "y": 39,
-        "w": 83,
-        "h": 96
+        "x": 219,
+        "y": 41,
+        "w": 81,
+        "h": 93
       },
       "sprite": {
         "defaultImageId": "doorClosed",
@@ -56,24 +56,24 @@
           "spriteImageId": "doorClosed",
           "dialogue": {
             "LOOK": "The lock is old, stubborn, and very proud of it.",
-            "OPEN": "Locked. Impressively, theatrically locked.",
-            "USE": "The lock politely declines all non-key proposals."
+            "USE": "The lock politely declines all non-key proposals.",
+            "OPEN": "Locked. Impressively, theatrically locked."
           }
         },
         "open": {
           "spriteImageId": "doorOpen",
           "dialogue": {
             "LOOK": "The door is open, as if inviting trouble.",
-            "OPEN": "It is already open. No encore needed.",
-            "TALK": "You thank the open door. It remains humble."
+            "TALK": "You thank the open door. It remains humble.",
+            "OPEN": "It is already open. No encore needed."
           }
         },
         "broken": {
           "spriteImageId": "doorOpen",
           "dialogue": {
             "LOOK": "The door hangs crooked on one hinge. Subtle it is not.",
-            "OPEN": "No need. Nature already opened it aggressively.",
-            "USE": "You poke the wreckage. It looks offended."
+            "USE": "You poke the wreckage. It looks offended.",
+            "OPEN": "No need. Nature already opened it aggressively."
           }
         },
         "inspected": {
@@ -97,8 +97,8 @@
         "h": 32
       },
       "walkTarget": {
-        "x": 53,
-        "y": 147
+        "x": 63,
+        "y": 137
       }
     },
     {
@@ -134,8 +134,160 @@
         "h": 34
       },
       "walkTarget": {
-        "x": 96,
-        "y": 150
+        "x": 22,
+        "y": 137
+      }
+    }
+  ],
+  "scripts": [
+    {
+      "hotspotId": "key",
+      "verb": "PICK_UP",
+      "conditions": {
+        "flagsNot": [
+          "keyTaken"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "You pick up the brass key."
+        ],
+        "addInventoryItem": {
+          "id": "key",
+          "name": "Key"
+        },
+        "setFlags": {
+          "keyTaken": true,
+          "keyInspected": true
+        }
+      }
+    },
+    {
+      "hotspotId": "key",
+      "verb": "PICK_UP",
+      "conditions": {
+        "flagsAll": [
+          "keyTaken"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "You already picked up the key."
+        ]
+      }
+    },
+    {
+      "hotspotId": "door",
+      "verb": "USE",
+      "requireNoInventoryItem": true,
+      "conditions": {
+        "flagsAll": [
+          "doorOpen"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "You step through the open door."
+        ],
+        "roomChangeTo": "room2"
+      }
+    },
+    {
+      "hotspotId": "door",
+      "verb": "USE",
+      "requireNoInventoryItem": true,
+      "conditions": {
+        "flagsNot": [
+          "doorOpen"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "Use what on the door? Your optimism jiggles the handle, but not the lock."
+        ]
+      }
+    },
+    {
+      "hotspotId": "door",
+      "verb": "USE",
+      "inventoryItemId": "key",
+      "conditions": {
+        "flagsNot": [
+          "keyTaken"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "You need to pick up the key first."
+        ]
+      }
+    },
+    {
+      "hotspotId": "door",
+      "verb": "USE",
+      "inventoryItemId": "key",
+      "conditions": {
+        "flagsAll": [
+          "doorOpen"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "The door is already unlocked."
+        ]
+      }
+    },
+    {
+      "hotspotId": "door",
+      "verb": "USE",
+      "inventoryItemId": "key",
+      "conditions": {
+        "flagsAll": [
+          "keyTaken"
+        ],
+        "flagsNot": [
+          "doorOpen"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "The key turns with a click. The door swings open."
+        ],
+        "setFlags": {
+          "doorOpen": true,
+          "doorLocked": false,
+          "doorInspected": true
+        },
+        "clearSelectedInventory": true
+      }
+    },
+    {
+      "hotspotId": "door",
+      "verb": "OPEN",
+      "conditions": {
+        "flagsAll": [
+          "doorOpen"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "You step through the open door."
+        ],
+        "roomChangeTo": "room2"
+      }
+    },
+    {
+      "hotspotId": "door",
+      "verb": "OPEN",
+      "conditions": {
+        "flagsNot": [
+          "doorOpen"
+        ]
+      },
+      "result": {
+        "dialogueLines": [
+          "Locked. Impressively, theatrically locked."
+        ]
       }
     }
   ],

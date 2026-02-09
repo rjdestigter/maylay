@@ -61,6 +61,7 @@ export interface RoomDefinition {
   height: number;
   backgroundColor: string;
   hotspots: Hotspot[];
+  scripts?: RoomScriptRule[];
   walkablePolygon?: Point[];
   perspective?: {
     farY: number;
@@ -90,6 +91,19 @@ export interface ScriptResult {
   removeInventoryItemId?: string;
   roomChangeTo?: string;
   clearSelectedInventory?: boolean;
+}
+
+export interface RoomScriptRule {
+  hotspotId: string;
+  verb: Verb;
+  inventoryItemId?: string;
+  requireNoInventoryItem?: boolean;
+  conditions?: {
+    flagsAll?: string[];
+    flagsAny?: string[];
+    flagsNot?: string[];
+  };
+  result: ScriptResult;
 }
 
 

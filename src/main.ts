@@ -1016,7 +1016,7 @@ async function bootstrap(): Promise<void> {
 
     actor.send({
       type: 'SCRIPT_RESOLVED',
-      result: resolveInteraction(context, hotspot),
+      result: resolveInteraction(context, room, hotspot),
     });
   }
 
@@ -1484,6 +1484,7 @@ async function bootstrap(): Promise<void> {
         height: room.height,
         backgroundColor: room.backgroundColor,
         hotspots: room.hotspots,
+        scripts: room.scripts ?? [],
         walkablePolygon: room.walkablePolygon ?? [],
         perspective: room.perspective,
         overlayText: room.overlayText,

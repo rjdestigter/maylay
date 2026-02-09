@@ -48,6 +48,7 @@ const server = http.createServer(async (req, res) => {
         height: toFiniteNumber(room.height, 180),
         backgroundColor: typeof room.backgroundColor === 'string' ? room.backgroundColor : '#000000',
         hotspots: Array.isArray(room.hotspots) ? room.hotspots : [],
+        scripts: Array.isArray(room.scripts) ? room.scripts : [],
         walkablePolygon: Array.isArray(room.walkablePolygon) ? room.walkablePolygon : [],
         perspective: isObject(room.perspective) ? room.perspective : undefined,
         overlayText: typeof room.overlayText === 'string' ? room.overlayText : undefined,

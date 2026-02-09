@@ -85,9 +85,9 @@ git push -u origin main
     - `currentRoomId`, `selectedVerb`, `selectedInventoryItemId`, `flags`, `inventory`, `pendingInteraction`
 - Game logic scripts: `src/game/scripts.ts`
   - Resolves LOOK / TALK / PICK_UP / USE on hotspots.
-  - Puzzle: pick up key, use key on door to open, click opened door to transition to room2.
+  - First evaluates room JSON `scripts` rules (data-driven DSL), then falls back to defaults.
 - Room content: `src/game/rooms/*.json`
-  - JSON defines rooms/hotspots/walkable polygons/perspective.
+  - JSON defines rooms/hotspots/walkable polygons/perspective/scripts.
   - `src/game/rooms/room1.ts` loads and validates JSON into typed `RoomDefinition`.
 - Dialogue fallback content: `src/game/dialogue/fallbacks.json`
   - Witty default lines are data-driven and loaded by `src/game/scripts.ts`.
@@ -113,9 +113,13 @@ git push -u origin main
 2. Optional sprite config in JSON:
    - `sprite.defaultImageId` (e.g. `"sign"`)
    - `sprite.flagVariants` for state-based swaps (e.g. door closed/open by `doorOpen` flag)
-3. Add behavior in `resolveInteraction` in `src/game/scripts.ts`.
-4. If needed, add a visibility rule in `isHotspotVisible`.
-5. Use flags/inventory updates through `ScriptResult` fields.
+3. Add data-driven behavior in room JSON `scripts`:
+   - `hotspotId`, `verb`, optional `inventoryItemId` or `requireNoInventoryItem`
+   - optional `conditions.flagsAll/flagsAny/flagsNot`
+   - `result` with `dialogueLines`, optional `setFlags`, `addInventoryItem`, `roomChangeTo`, etc.
+4. Add behavior in `resolveInteraction` in `src/game/scripts.ts` only for shared fallback logic.
+5. If needed, add a visibility rule in `isHotspotVisible`.
+6. Use flags/inventory updates through `ScriptResult` fields.
 
 ## Dev Mode Persistence
 

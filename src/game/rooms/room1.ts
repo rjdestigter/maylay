@@ -9,6 +9,7 @@ import type {
   HotspotSpriteFlagVariant,
   Point,
   Rect,
+  RoomScriptRule,
   RoomDefinition,
 } from '../types';
 
@@ -51,6 +52,7 @@ function toRoomDefinition(raw: unknown): RoomDefinition {
     height: raw.height,
     backgroundColor: raw.backgroundColor,
     hotspots: raw.hotspots.map(toHotspot),
+    scripts: Array.isArray(raw.scripts) ? raw.scripts.map(toRoomScriptRule) : undefined,
     walkablePolygon: Array.isArray(raw.walkablePolygon) ? raw.walkablePolygon.map(toPoint) : undefined,
     perspective: isObject(raw.perspective)
       ? {
@@ -169,6 +171,44 @@ function toRect(raw: unknown, field: string): Rect {
   };
 }
 
+function toRoomScriptRule(raw: unknown): RoomScriptRule {
+  if (!isObject(raw) || !isString(raw.hotspotId)) {
+    throw new Error('Invalid room script rule: expected hotspotId');
+  }
+  if (!isVerb(raw.verb)) {
+    throw new Error(`Invalid room script rule (${raw.hotspotId}): invalid verb`);
+  }
+  if (!isObject(raw.result) || !Array.isArray(raw.result.dialogueLines)) {
+    throw new Error(`Invalid room script rule (${raw.hotspotId}): result.dialogueLines must be an array`);
+  }
+  const dialogueLines = raw.result.dialogueLines
+    .filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
+    .map((line) => line.trim());
+  return {
+    hotspotId: raw.hotspotId,
+    verb: raw.verb,
+    inventoryItemId: toOptionalNonEmptyString(raw.inventoryItemId),
+    requireNoInventoryItem: raw.requireNoInventoryItem === true,
+    conditions: isObject(raw.conditions)
+      ? {
+          flagsAll: toStringArray(raw.conditions.flagsAll),
+          flagsAny: toStringArray(raw.conditions.flagsAny),
+          flagsNot: toStringArray(raw.conditions.flagsNot),
+        }
+      : undefined,
+    result: {
+      dialogueLines,
+      setFlags: isObject(raw.result.setFlags) ? toBooleanRecord(raw.result.setFlags) : undefined,
+      addInventoryItem: isObject(raw.result.addInventoryItem)
+        ? toInventoryItem(raw.result.addInventoryItem)
+        : undefined,
+      removeInventoryItemId: toOptionalNonEmptyString(raw.result.removeInventoryItemId),
+      roomChangeTo: toOptionalNonEmptyString(raw.result.roomChangeTo),
+      clearSelectedInventory: raw.result.clearSelectedInventory === true,
+    },
+  };
+}
+
 function toPoint(raw: unknown): Point {
   if (!isObject(raw)) {
     throw new Error('Invalid point: expected object');
@@ -196,6 +236,43 @@ function isString(value: unknown): value is string {
 
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isVerb(value: unknown): value is 'LOOK' | 'TALK' | 'PICK_UP' | 'USE' | 'OPEN' {
+  return value === 'LOOK' || value === 'TALK' || value === 'PICK_UP' || value === 'USE' || value === 'OPEN';
+}
+
+function toStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const next = value
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((entry) => entry.trim());
+  return next.length > 0 ? next : undefined;
+}
+
+function toBooleanRecord(value: Record<string, unknown>): Record<string, boolean> | undefined {
+  const next: Record<string, boolean> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === 'boolean' && key.trim().length > 0) {
+      next[key] = entry;
+    }
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function toInventoryItem(raw: unknown): { id: string; name: string } | undefined {
+  if (!isObject(raw) || !isString(raw.id) || !isString(raw.name)) {
+    return undefined;
+  }
+  if (raw.id.trim().length === 0 || raw.name.trim().length === 0) {
+    return undefined;
+  }
+  return {
+    id: raw.id.trim(),
+    name: raw.name.trim(),
+  };
 }
 
 function toOptionalNonEmptyString(value: unknown): string | undefined {
