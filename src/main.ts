@@ -131,6 +131,13 @@ const DEV_PERSPECTIVE_FIELDS: Array<{ value: DevPerspectiveField; label: string;
   { value: 'farScale', label: 'farScale', key: 'E' },
   { value: 'nearScale', label: 'nearScale', key: 'R' },
 ];
+const DEV_TOOL_HINTS: Record<DevEditTarget, string> = {
+  bounds: 'Hotspot tool: drag corner handles to resize bounds, center to move.',
+  spriteBounds: 'Sprite tool: tune rendered sprite placement/size without changing hit area.',
+  walkTarget: 'Walk Target tool: drag target handle where actor should stop to interact.',
+  walkablePolygon: 'Walkable Poly tool: drag vertices, click edge to insert, Shift/Alt/right-click/Delete to remove.',
+  perspective: 'Perspective tool: pick field (Q/W/E/R), then adjust with chips or arrow keys.',
+};
 
 void bootstrap();
 
@@ -157,6 +164,7 @@ async function bootstrap(): Promise<void> {
   const actor = createActor(gameMachine);
   let debugHotspots = false;
   let devMode = false;
+  let devShowAdvanced = false;
   let devEditTarget: DevEditTarget = 'bounds';
   let devPerspectiveField: DevPerspectiveField = 'farY';
   let selectedHotspotId: string | null = null;
@@ -592,25 +600,29 @@ async function bootstrap(): Promise<void> {
   });
   devPanel.addEventListener('click', (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLButtonElement>('button');
+    if (!button) {
       return;
     }
     let changed = false;
 
-    const nextTarget = target.dataset.devTarget;
+    const nextTarget = button.dataset.devTarget;
     if (isDevEditTarget(nextTarget)) {
       devEditTarget = nextTarget;
       changed = true;
     }
     if (!changed) {
-      const nextField = target.dataset.devPerspectiveField;
+      const nextField = button.dataset.devPerspectiveField;
       if (isDevPerspectiveField(nextField)) {
         devPerspectiveField = nextField;
         changed = true;
       }
     }
     if (!changed) {
-      const deltaRaw = target.dataset.devAdjust;
+      const deltaRaw = button.dataset.devAdjust;
       if (deltaRaw) {
         const delta = Number.parseInt(deltaRaw, 10);
         if (Number.isFinite(delta)) {
@@ -619,19 +631,47 @@ async function bootstrap(): Promise<void> {
         }
       }
     }
-    if (!changed && target.dataset.devAction === 'clear-selection') {
+    if (!changed && button.dataset.devAction === 'clear-selection') {
       selectedHotspotId = null;
       changed = true;
     }
-    if (!changed && target.dataset.devAction === 'add-hotspot') {
+    if (!changed && button.dataset.devAction === 'add-hotspot') {
       changed = addHotspot(actor.getSnapshot().context);
     }
-    if (!changed && target.dataset.devAction === 'edit-hotspot-description') {
+    if (!changed && button.dataset.devAction === 'edit-hotspot-description') {
       changed = editSelectedHotspotDescription(actor.getSnapshot().context);
     }
-    if (!changed && target.dataset.devAction === 'save-room') {
+    if (!changed && button.dataset.devAction === 'save-room') {
       void persistCurrentRoom(actor.getSnapshot().context);
       return;
+    }
+    if (!changed && button.dataset.devAction === 'toggle-advanced') {
+      devShowAdvanced = !devShowAdvanced;
+      changed = true;
+    }
+    if (!changed && button.dataset.devAction === 'clear-polygon') {
+      const room = rooms[actor.getSnapshot().context.currentRoomId];
+      if (room) {
+        room.walkablePolygon = [];
+        hoveredPolygonVertexIndex = null;
+        changed = true;
+      }
+    }
+    if (!changed && button.dataset.devAction === 'init-sprite-bounds') {
+      const room = rooms[actor.getSnapshot().context.currentRoomId];
+      const hotspot = room?.hotspots.find((spot) => spot.id === selectedHotspotId);
+      if (hotspot) {
+        hotspot.spriteBounds = { ...hotspot.bounds };
+        changed = true;
+      }
+    }
+    if (!changed && button.dataset.devAction === 'clear-sprite-bounds') {
+      const room = rooms[actor.getSnapshot().context.currentRoomId];
+      const hotspot = room?.hotspots.find((spot) => spot.id === selectedHotspotId);
+      if (hotspot) {
+        hotspot.spriteBounds = undefined;
+        changed = true;
+      }
     }
     if (changed) {
       const snapshot = actor.getSnapshot();
@@ -1149,6 +1189,7 @@ async function bootstrap(): Promise<void> {
     devPanel.classList.toggle('hidden', !devMode);
     if (!devMode) {
       devGui.innerHTML = '';
+      devInfo.hidden = true;
       return;
     }
 
@@ -1161,7 +1202,7 @@ async function bootstrap(): Promise<void> {
     const selectedDescription = hotspot?.description?.trim() ? hotspot.description.trim() : '(no description)';
     const targetButtons = DEV_TARGETS.map((option) => {
       const active = option.value === devEditTarget ? 'active' : '';
-      return `<button type="button" class="dev-chip ${active}" data-dev-target="${option.value}">${option.label} [${option.key}]</button>`;
+      return `<button type="button" class="dev-tool-btn ${active}" data-dev-target="${option.value}" aria-pressed="${option.value === devEditTarget}"><span class="dev-tool-name">${option.label}</span><span class="dev-tool-key">[${option.key}]</span></button>`;
     }).join('');
     const perspectiveFieldButtons = DEV_PERSPECTIVE_FIELDS.map((field) => {
       const active = field.value === devPerspectiveField ? 'active' : '';
@@ -1169,7 +1210,17 @@ async function bootstrap(): Promise<void> {
       return `<button type="button" class="dev-chip ${active} ${muted}" data-dev-perspective-field="${field.value}">${field.label} [${field.key}]</button>`;
     }).join('');
     const perspectiveAdjustClass = devEditTarget === 'perspective' ? '' : 'muted';
+    const modeHint = DEV_TOOL_HINTS[devEditTarget];
+    const toolInspector = renderToolInspector(room, hotspot, devEditTarget, perspectiveFieldButtons, perspectiveAdjustClass);
     devGui.innerHTML = `
+      <div class="dev-tool-section">
+        <div class="dev-tool-title">Tools</div>
+        <div class="dev-toolbar">${targetButtons}</div>
+      </div>
+      <div class="dev-row">
+        <span class="dev-label">Mode</span>
+        <span class="dev-tool-hint">${escapeHtml(modeHint)}</span>
+      </div>
       <div class="dev-row">
         <span class="dev-label">Selection</span>
         ${selectedStatus}
@@ -1177,23 +1228,19 @@ async function bootstrap(): Promise<void> {
         <button type="button" class="dev-chip" data-dev-action="add-hotspot">Add hotspot</button>
         <button type="button" class="dev-chip ${hotspot ? '' : 'muted'}" data-dev-action="edit-hotspot-description">Edit description</button>
         <button type="button" class="dev-chip" data-dev-action="save-room">Save room</button>
+        <button type="button" class="dev-chip" data-dev-action="toggle-advanced">${devShowAdvanced ? 'Hide debug' : 'Show debug'}</button>
       </div>
+      ${toolInspector}
       <div class="dev-row">
-        <span class="dev-label">Edit Target</span>
-        ${targetButtons}
-      </div>
-      <div class="dev-row">
-        <span class="dev-label">Persp Field</span>
-        ${perspectiveFieldButtons}
-      </div>
-      <div class="dev-row">
-        <span class="dev-label">Persp Adjust</span>
-        <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="-5">-5</button>
-        <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="-1">-1</button>
-        <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="1">+1</button>
-        <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="5">+5</button>
+        <span class="dev-label">Persistence</span>
+        <span class="dev-tool-hint">${escapeHtml(devPersistStatus)}</span>
       </div>
     `;
+
+    devInfo.hidden = !devShowAdvanced;
+    if (!devShowAdvanced) {
+      return;
+    }
 
     const line1 = `DEV EDITOR (F3): ${context.currentRoomId}`;
     const line2 = `Target [1/2/3/4/5]: ${devEditTarget}`;
@@ -1230,11 +1277,99 @@ async function bootstrap(): Promise<void> {
     const line7 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
     const line8 = `Perspective field [Q/W/E/R]: ${devPerspectiveField}`;
     const line9 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
-    const line10 = 'Drag handles: corners resize, center moves | Keyboard: arrows [ ] ; \'';
-    const line11 = 'Polygon mode: drag vertex, click edge to insert, Shift/Alt/right-click/Delete to remove, Ctrl+click clear';
+    const line10 = `Tool hint: ${modeHint}`;
+    const line11 = 'Keyboard: 1-5 switch tools | arrows move | [ ] ; \' resize | C copy | S save';
     const line12 = 'Copy room JSON: C | Save room JSON: S or button';
     const line13 = devPersistStatus;
     devInfo.textContent = [line1, line2, line3, line4, line4b, line4c, line4d, line4e, line5, line6, line7, line8, line9, line10, line11, line12, line13].join('\n');
+  }
+
+  function renderToolInspector(
+    room: typeof rooms[string] | undefined,
+    hotspot: Hotspot | null,
+    target: DevEditTarget,
+    perspectiveFieldButtons: string,
+    perspectiveAdjustClass: string,
+  ): string {
+    if (target === 'walkablePolygon') {
+      const pointCount = room?.walkablePolygon?.length ?? 0;
+      return `
+        <div class="dev-inspector">
+          <div class="dev-inspector-title">Walkable Polygon</div>
+          <div class="dev-row"><span class="dev-label">Points</span><span class="dev-kv">${pointCount}</span></div>
+          <div class="dev-row"><span class="dev-label">Edit</span><span class="dev-tool-hint">Drag points, click edge to insert, Shift/Alt/right-click/Delete to remove.</span></div>
+          <div class="dev-row"><span class="dev-label">Actions</span><button type="button" class="dev-chip" data-dev-action="clear-polygon">Clear polygon</button></div>
+        </div>
+      `;
+    }
+    if (target === 'perspective') {
+      const perspective = ensureRoomPerspective(room ?? rooms.room1);
+      return `
+        <div class="dev-inspector">
+          <div class="dev-inspector-title">Perspective</div>
+          <div class="dev-row"><span class="dev-label">Current</span><span class="dev-kv">farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}</span></div>
+          <div class="dev-row"><span class="dev-label">Field</span>${perspectiveFieldButtons}</div>
+          <div class="dev-row">
+            <span class="dev-label">Adjust</span>
+            <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="-5">-5</button>
+            <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="-1">-1</button>
+            <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="1">+1</button>
+            <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="5">+5</button>
+          </div>
+        </div>
+      `;
+    }
+    if (!hotspot) {
+      return `
+        <div class="dev-inspector">
+          <div class="dev-inspector-title">Inspector</div>
+          <div class="dev-row"><span class="dev-label">Hint</span><span class="dev-tool-hint">Select a hotspot to edit with this tool.</span></div>
+        </div>
+      `;
+    }
+
+    if (target === 'bounds') {
+      return `
+        <div class="dev-inspector">
+          <div class="dev-inspector-title">Hotspot Bounds</div>
+          <div class="dev-row"><span class="dev-label">Hotspot</span><span class="dev-kv">${escapeHtml(hotspot.id)}</span></div>
+          <div class="dev-row"><span class="dev-label">Rect</span><span class="dev-kv">x=${hotspot.bounds.x} y=${hotspot.bounds.y} w=${hotspot.bounds.w} h=${hotspot.bounds.h}</span></div>
+          <div class="dev-row"><span class="dev-label">Description</span><span class="dev-tool-hint">${escapeHtml(hotspot.description?.trim() || '(no description)')}</span></div>
+        </div>
+      `;
+    }
+
+    if (target === 'spriteBounds') {
+      const spriteRect = hotspot.spriteBounds;
+      const hasSpriteAsset = Boolean(hotspot.sprite?.defaultImageId || (hotspot.sprite?.flagVariants?.length ?? 0) > 0);
+      if (!spriteRect && !hasSpriteAsset) {
+        return `
+          <div class="dev-inspector">
+            <div class="dev-inspector-title">Sprite Bounds</div>
+            <div class="dev-row"><span class="dev-label">Hotspot</span><span class="dev-kv">${escapeHtml(hotspot.id)}</span></div>
+            <div class="dev-row"><span class="dev-label">State</span><span class="dev-tool-hint">This hotspot has no sprite config yet.</span></div>
+            <div class="dev-row"><span class="dev-label">Actions</span><button type="button" class="dev-chip" data-dev-action="init-sprite-bounds">Create sprite bounds</button></div>
+          </div>
+        `;
+      }
+      const rect = spriteRect ?? hotspot.bounds;
+      return `
+        <div class="dev-inspector">
+          <div class="dev-inspector-title">Sprite Bounds</div>
+          <div class="dev-row"><span class="dev-label">Hotspot</span><span class="dev-kv">${escapeHtml(hotspot.id)}</span></div>
+          <div class="dev-row"><span class="dev-label">Rect</span><span class="dev-kv">x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}</span></div>
+          <div class="dev-row"><span class="dev-label">Actions</span><button type="button" class="dev-chip ${hotspot.spriteBounds ? '' : 'muted'}" data-dev-action="clear-sprite-bounds">Clear sprite bounds</button></div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="dev-inspector">
+        <div class="dev-inspector-title">Walk Target</div>
+        <div class="dev-row"><span class="dev-label">Hotspot</span><span class="dev-kv">${escapeHtml(hotspot.id)}</span></div>
+        <div class="dev-row"><span class="dev-label">Point</span><span class="dev-kv">x=${Math.round(hotspot.walkTarget.x)} y=${Math.round(hotspot.walkTarget.y)}</span></div>
+      </div>
+    `;
   }
 
   function buildSentenceLine(context: GameContext, hoveredHotspotId: string | null, hoverWalkable: boolean): SentenceParts {
