@@ -30,6 +30,8 @@ export interface RenderParams {
       farScale: number;
       nearScale: number;
     };
+    perspectiveHoverHandle?: 'farY' | 'nearY' | null;
+    perspectiveDragHandle?: 'farY' | 'nearY' | null;
     actorBaseSize?: {
       width: number;
       height: number;
@@ -95,6 +97,8 @@ export class Renderer {
         devEditor.polygonHoverVertexIndex ?? null,
         devEditor.polygonDragVertexIndex ?? null,
         devEditor.perspective,
+        devEditor.perspectiveHoverHandle ?? null,
+        devEditor.perspectiveDragHandle ?? null,
         devEditor.actorBaseSize,
         devEditor.actorFeetY,
       );
@@ -207,6 +211,8 @@ export class Renderer {
     polygonHoverVertexIndex: number | null,
     polygonDragVertexIndex: number | null,
     perspective: { farY: number; nearY: number; farScale: number; nearScale: number } | undefined,
+    perspectiveHoverHandle: 'farY' | 'nearY' | null,
+    perspectiveDragHandle: 'farY' | 'nearY' | null,
     actorBaseSize: { width: number; height: number } | undefined,
     actorFeetY: number | undefined,
   ): void {
@@ -312,7 +318,7 @@ export class Renderer {
     }
 
     if (editTarget === 'perspective' && perspective && actorBaseSize && typeof actorFeetY === 'number') {
-      this.drawPerspectiveOverlay(perspective, actorBaseSize, actorFeetY);
+      this.drawPerspectiveOverlay(perspective, actorBaseSize, actorFeetY, perspectiveHoverHandle, perspectiveDragHandle);
     }
   }
 
@@ -320,6 +326,8 @@ export class Renderer {
     perspective: { farY: number; nearY: number; farScale: number; nearScale: number },
     actorBaseSize: { width: number; height: number },
     actorFeetY: number,
+    perspectiveHoverHandle: 'farY' | 'nearY' | null,
+    perspectiveDragHandle: 'farY' | 'nearY' | null,
   ): void {
     const farY = Math.round(perspective.farY);
     const nearY = Math.round(perspective.nearY);
@@ -340,28 +348,41 @@ export class Renderer {
     this.ctx.stroke();
     this.ctx.setLineDash([]);
 
-    const rulerX = this.width - 18;
+    const rulerX = this.width - 14;
     this.ctx.strokeStyle = '#f7f7f7';
     this.ctx.beginPath();
     this.ctx.moveTo(rulerX, farY);
     this.ctx.lineTo(rulerX, nearY);
     this.ctx.stroke();
 
-    this.ctx.fillStyle = '#7ec8ff';
-    this.ctx.fillRect(rulerX - 2, farY - 2, 4, 4);
-    this.ctx.fillStyle = '#ffd36e';
-    this.ctx.fillRect(rulerX - 2, nearY - 2, 4, 4);
+    this.drawPerspectiveHandle(
+      rulerX,
+      farY,
+      '#7ec8ff',
+      perspectiveHoverHandle === 'farY' || perspectiveDragHandle === 'farY',
+    );
+    this.drawPerspectiveHandle(
+      rulerX,
+      nearY,
+      '#ffd36e',
+      perspectiveHoverHandle === 'nearY' || perspectiveDragHandle === 'nearY',
+    );
 
     const farH = Math.round(actorBaseSize.height * perspective.farScale);
     const nearH = Math.round(actorBaseSize.height * perspective.nearScale);
     const farW = Math.round(actorBaseSize.width * perspective.farScale);
     const nearW = Math.round(actorBaseSize.width * perspective.nearScale);
-    const sampleX = 14;
-
+    const ghostX = Math.round(this.width * 0.18);
     this.ctx.strokeStyle = 'rgba(126, 200, 255, 0.95)';
-    this.ctx.strokeRect(sampleX, farY - farH, farW, farH);
+    this.ctx.strokeRect(ghostX, farY - farH, farW, farH);
+    const midY = Math.round((farY + nearY) * 0.5);
+    const midScale = (perspective.farScale + perspective.nearScale) * 0.5;
+    const midH = Math.round(actorBaseSize.height * midScale);
+    const midW = Math.round(actorBaseSize.width * midScale);
+    this.ctx.strokeStyle = 'rgba(206, 236, 255, 0.88)';
+    this.ctx.strokeRect(ghostX + 10, midY - midH, midW, midH);
     this.ctx.strokeStyle = 'rgba(255, 211, 110, 0.95)';
-    this.ctx.strokeRect(sampleX + farW + 4, nearY - nearH, nearW, nearH);
+    this.ctx.strokeRect(ghostX + 18, nearY - nearH, nearW, nearH);
 
     const tRaw = (actorFeetY - perspective.farY) / ((perspective.nearY - perspective.farY) || 0.0001);
     const t = Math.max(0, Math.min(1, tRaw));
@@ -378,10 +399,21 @@ export class Renderer {
 
     this.ctx.fillStyle = '#f7f7f7';
     this.ctx.font = '10px monospace';
-    this.ctx.fillText(`farY ${farY}`, 4, Math.max(10, farY - 4));
-    this.ctx.fillText(`nearY ${nearY}`, 4, Math.max(10, nearY - 4));
+    this.ctx.fillText(`farY ${farY}`, 4, Math.max(10, farY - 5));
+    this.ctx.fillText(`nearY ${nearY}`, 4, Math.max(10, nearY - 5));
     this.ctx.fillText(`scale ${currentScale.toFixed(2)}x`, currentX + 2, Math.max(10, currentY - currentH - 3));
     this.ctx.restore();
+  }
+
+  private drawPerspectiveHandle(x: number, y: number, color: string, isActive: boolean): void {
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, isActive ? 4 : 3, 0, Math.PI * 2);
+    this.ctx.fillStyle = color;
+    this.ctx.fill();
+    this.ctx.strokeStyle = '#1b1210';
+    this.ctx.lineWidth = isActive ? 2 : 1;
+    this.ctx.stroke();
+    this.ctx.lineWidth = 1;
   }
 
   private drawRectHandles(rect: { x: number; y: number; w: number; h: number }): void {

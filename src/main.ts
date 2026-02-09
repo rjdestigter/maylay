@@ -89,7 +89,6 @@ const CURSOR_DEV = makeCursorCss(
   'crosshair',
 );
 type DevEditTarget = 'bounds' | 'spriteBounds' | 'walkTarget' | 'walkablePolygon' | 'perspective';
-type DevPerspectiveField = 'farY' | 'nearY' | 'farScale' | 'nearScale';
 type DevRectHandle = 'move' | 'nw' | 'ne' | 'sw' | 'se';
 type DevDragState =
   | {
@@ -110,6 +109,12 @@ type DevDragState =
       vertexIndex: number;
       startPoint: Point;
       startVertex: Point;
+    }
+  | {
+      target: 'perspectiveY';
+      field: 'farY' | 'nearY';
+      startPoint: Point;
+      startValue: number;
     };
 type SentenceParts = {
   prefix: string;
@@ -125,18 +130,12 @@ const DEV_TARGETS: Array<{ value: DevEditTarget; label: string; key: string }> =
   { value: 'walkablePolygon', label: 'Walkable Poly', key: '4' },
   { value: 'perspective', label: 'Perspective', key: '5' },
 ];
-const DEV_PERSPECTIVE_FIELDS: Array<{ value: DevPerspectiveField; label: string; key: string }> = [
-  { value: 'farY', label: 'farY', key: 'Q' },
-  { value: 'nearY', label: 'nearY', key: 'W' },
-  { value: 'farScale', label: 'farScale', key: 'E' },
-  { value: 'nearScale', label: 'nearScale', key: 'R' },
-];
 const DEV_TOOL_HINTS: Record<DevEditTarget, string> = {
   bounds: 'Hotspot tool: drag corner handles to resize bounds, center to move.',
   spriteBounds: 'Sprite tool: tune rendered sprite placement/size without changing hit area.',
   walkTarget: 'Walk Target tool: drag target handle where actor should stop to interact.',
   walkablePolygon: 'Walkable Poly tool: drag vertices, click edge to insert, Shift/Alt/right-click/Delete to remove.',
-  perspective: 'Perspective tool: pick field (Q/W/E/R), then adjust with chips or arrow keys.',
+  perspective: 'Perspective tool: drag far/near guide lines on canvas and tune scales with sliders.',
 };
 
 void bootstrap();
@@ -166,12 +165,12 @@ async function bootstrap(): Promise<void> {
   let devMode = false;
   let devShowAdvanced = false;
   let devEditTarget: DevEditTarget = 'bounds';
-  let devPerspectiveField: DevPerspectiveField = 'farY';
   let selectedHotspotId: string | null = null;
   let devDragState: DevDragState | null = null;
   let suppressNextDevClick = false;
   let pointerCanvasPoint: Point | null = null;
   let hoveredPolygonVertexIndex: number | null = null;
+  let hoveredPerspectiveHandle: 'farY' | 'nearY' | null = null;
 
   let actorPosition = { x: 96, y: 150 };
   let actorSize = { width: 54, height: 68 };
@@ -313,6 +312,13 @@ async function bootstrap(): Promise<void> {
       } else {
         hoveredPolygonVertexIndex = null;
       }
+      if (devMode && devEditTarget === 'perspective' && point) {
+        const room = rooms[actor.getSnapshot().context.currentRoomId];
+        const perspective = room ? ensureRoomPerspective(room) : null;
+        hoveredPerspectiveHandle = perspective ? hitTestPerspectiveGuide(point, perspective) : null;
+      } else if (!devDragState || devDragState.target !== 'perspectiveY') {
+        hoveredPerspectiveHandle = null;
+      }
       if (!point || hotspot) {
         hoveredWalkableArea = false;
         return;
@@ -413,6 +419,7 @@ async function bootstrap(): Promise<void> {
       && devEditTarget !== 'spriteBounds'
       && devEditTarget !== 'walkTarget'
       && devEditTarget !== 'walkablePolygon'
+      && devEditTarget !== 'perspective'
     ) {
       return;
     }
@@ -437,6 +444,19 @@ async function bootstrap(): Promise<void> {
         vertexIndex,
         startPoint: point,
         startVertex: { ...polygon[vertexIndex] },
+      };
+    } else if (devEditTarget === 'perspective') {
+      const perspective = ensureRoomPerspective(room);
+      const field = hitTestPerspectiveGuide(point, perspective);
+      if (!field) {
+        return;
+      }
+      hoveredPerspectiveHandle = field;
+      devDragState = {
+        target: 'perspectiveY',
+        field,
+        startPoint: point,
+        startValue: perspective[field],
       };
     } else {
       if (devEditTarget === 'walkTarget') {
@@ -510,6 +530,19 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
+    if (dragState.target === 'perspectiveY') {
+      const perspective = ensureRoomPerspective(room);
+      const nextY = Math.round(dragState.startValue + dy);
+      if (dragState.field === 'farY') {
+        perspective.farY = clamp(nextY, 0, perspective.nearY - 1);
+      } else {
+        perspective.nearY = clamp(nextY, perspective.farY + 1, room.height);
+      }
+      hoveredPerspectiveHandle = dragState.field;
+      refreshUi();
+      return;
+    }
+
     const hotspot = room.hotspots.find((spot) => spot.id === dragState.hotspotId);
     if (!hotspot) {
       return;
@@ -533,6 +566,9 @@ async function bootstrap(): Promise<void> {
   const onDevPointerUp = (event: PointerEvent): void => {
     if (!devDragState) {
       return;
+    }
+    if (devDragState.target === 'perspectiveY') {
+      hoveredPerspectiveHandle = null;
     }
     devDragState = null;
     if (canvas.hasPointerCapture(event.pointerId)) {
@@ -633,23 +669,6 @@ async function bootstrap(): Promise<void> {
       devEditTarget = nextTarget;
       changed = true;
     }
-    if (!changed) {
-      const nextField = button.dataset.devPerspectiveField;
-      if (isDevPerspectiveField(nextField)) {
-        devPerspectiveField = nextField;
-        changed = true;
-      }
-    }
-    if (!changed) {
-      const deltaRaw = button.dataset.devAdjust;
-      if (deltaRaw) {
-        const delta = Number.parseInt(deltaRaw, 10);
-        if (Number.isFinite(delta)) {
-          adjustRoomPerspective(actor.getSnapshot().context, delta);
-          changed = true;
-        }
-      }
-    }
     if (!changed && button.dataset.devAction === 'clear-selection') {
       selectedHotspotId = null;
       changed = true;
@@ -696,6 +715,27 @@ async function bootstrap(): Promise<void> {
       const snapshot = actor.getSnapshot();
       renderUi(snapshot.context, snapshot.matches('dialogue'));
     }
+  });
+  devPanel.addEventListener('input', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+      return;
+    }
+    const key = target.dataset.devPerspectiveValue;
+    if (!isPerspectiveValueField(key)) {
+      return;
+    }
+    const room = rooms[actor.getSnapshot().context.currentRoomId];
+    if (!room) {
+      return;
+    }
+    const perspective = ensureRoomPerspective(room);
+    const parsed = Number.parseFloat(target.value);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    setPerspectiveValue(room, perspective, key, parsed);
+    refreshUi();
   });
 
   actor.subscribe((snapshot) => {
@@ -747,6 +787,7 @@ async function bootstrap(): Promise<void> {
       if (!devMode) {
         selectedHotspotId = null;
         devDragState = null;
+        hoveredPerspectiveHandle = null;
       }
       refreshUi();
       event.preventDefault();
@@ -798,30 +839,6 @@ async function bootstrap(): Promise<void> {
       event.preventDefault();
       return;
     }
-    if (event.key.toLowerCase() === 'q') {
-      devPerspectiveField = 'farY';
-      refreshUi();
-      event.preventDefault();
-      return;
-    }
-    if (event.key.toLowerCase() === 'w') {
-      devPerspectiveField = 'nearY';
-      refreshUi();
-      event.preventDefault();
-      return;
-    }
-    if (event.key.toLowerCase() === 'e') {
-      devPerspectiveField = 'farScale';
-      refreshUi();
-      event.preventDefault();
-      return;
-    }
-    if (event.key.toLowerCase() === 'r') {
-      devPerspectiveField = 'nearScale';
-      refreshUi();
-      event.preventDefault();
-      return;
-    }
     if (event.key.toLowerCase() === 'c') {
       void copyCurrentRoomHotspots(actor.getSnapshot().context);
       event.preventDefault();
@@ -860,7 +877,7 @@ async function bootstrap(): Promise<void> {
     const moveStep = event.shiftKey ? 5 : 1;
     if (event.key === 'ArrowLeft') {
       if (devEditTarget === 'perspective') {
-        adjustRoomPerspective(actor.getSnapshot().context, -moveStep);
+        nudgePerspective(actor.getSnapshot().context, 'nearScale', -moveStep * 0.01);
         event.preventDefault();
         return;
       }
@@ -870,7 +887,7 @@ async function bootstrap(): Promise<void> {
     }
     if (event.key === 'ArrowRight') {
       if (devEditTarget === 'perspective') {
-        adjustRoomPerspective(actor.getSnapshot().context, moveStep);
+        nudgePerspective(actor.getSnapshot().context, 'nearScale', moveStep * 0.01);
         event.preventDefault();
         return;
       }
@@ -879,11 +896,21 @@ async function bootstrap(): Promise<void> {
       return;
     }
     if (event.key === 'ArrowUp') {
+      if (devEditTarget === 'perspective') {
+        nudgePerspective(actor.getSnapshot().context, event.shiftKey ? 'farY' : 'nearY', -moveStep);
+        event.preventDefault();
+        return;
+      }
       adjustSelectedHotspot(actor.getSnapshot().context, 0, -moveStep, 0, 0);
       event.preventDefault();
       return;
     }
     if (event.key === 'ArrowDown') {
+      if (devEditTarget === 'perspective') {
+        nudgePerspective(actor.getSnapshot().context, event.shiftKey ? 'farY' : 'nearY', moveStep);
+        event.preventDefault();
+        return;
+      }
       adjustSelectedHotspot(actor.getSnapshot().context, 0, moveStep, 0, 0);
       event.preventDefault();
       return;
@@ -964,6 +991,8 @@ async function bootstrap(): Promise<void> {
         polygonHoverVertexIndex: hoveredPolygonVertexIndex,
         polygonDragVertexIndex: devDragState?.target === 'walkablePolygon' ? devDragState.vertexIndex : null,
         perspective: room.perspective,
+        perspectiveHoverHandle: hoveredPerspectiveHandle,
+        perspectiveDragHandle: devDragState?.target === 'perspectiveY' ? devDragState.field : null,
         actorBaseSize: { ...actorSize },
         actorFeetY: actorPosition.y,
       },
@@ -1144,6 +1173,15 @@ async function bootstrap(): Promise<void> {
       return vertexIndex >= 0 ? 'grab' : null;
     }
 
+    if (editTarget === 'perspective') {
+      if (dragState?.target === 'perspectiveY') {
+        return 'ns-resize';
+      }
+      const perspective = ensureRoomPerspective(room);
+      const handle = hitTestPerspectiveGuide(point, perspective);
+      return handle ? 'ns-resize' : null;
+    }
+
     if (editTarget === 'walkTarget') {
       if (dragState?.target === 'walkTarget') {
         return 'grabbing';
@@ -1220,14 +1258,8 @@ async function bootstrap(): Promise<void> {
       const active = option.value === devEditTarget ? 'active' : '';
       return `<button type="button" class="dev-tool-btn ${active}" data-dev-target="${option.value}" aria-pressed="${option.value === devEditTarget}"><span class="dev-tool-name">${option.label}</span><span class="dev-tool-key">[${option.key}]</span></button>`;
     }).join('');
-    const perspectiveFieldButtons = DEV_PERSPECTIVE_FIELDS.map((field) => {
-      const active = field.value === devPerspectiveField ? 'active' : '';
-      const muted = devEditTarget === 'perspective' ? '' : 'muted';
-      return `<button type="button" class="dev-chip ${active} ${muted}" data-dev-perspective-field="${field.value}">${field.label} [${field.key}]</button>`;
-    }).join('');
-    const perspectiveAdjustClass = devEditTarget === 'perspective' ? '' : 'muted';
     const modeHint = DEV_TOOL_HINTS[devEditTarget];
-    const toolInspector = renderToolInspector(room, hotspot, devEditTarget, perspectiveFieldButtons, perspectiveAdjustClass);
+    const toolInspector = renderToolInspector(room, hotspot, devEditTarget);
     devGui.innerHTML = `
       <div class="dev-tool-section">
         <div class="dev-tool-title">Tools</div>
@@ -1286,12 +1318,15 @@ async function bootstrap(): Promise<void> {
         case 'walkablePolygon':
           line4e = `Dragging: walkablePolygon (vertex ${dragState.vertexIndex})`;
           break;
+        case 'perspectiveY':
+          line4e = `Dragging: perspective (${dragState.field})`;
+          break;
       }
     }
     const line5 = `Actor size +/-: ${actorSize.width}x${actorSize.height}`;
     const line6 = `Actor render scale: ${getPerspectiveScale(room ?? rooms.room1, actorPosition.y).toFixed(2)}x`;
     const line7 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
-    const line8 = `Perspective field [Q/W/E/R]: ${devPerspectiveField}`;
+    const line8 = `Perspective drag: farY=${hoveredPerspectiveHandle === 'farY' ? 'hover' : '-'} nearY=${hoveredPerspectiveHandle === 'nearY' ? 'hover' : '-'}`;
     const line9 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
     const line10 = `Tool hint: ${modeHint}`;
     const line11 = 'Keyboard: 1-5 switch tools | arrows move | [ ] ; \' resize | C copy | S save';
@@ -1304,8 +1339,6 @@ async function bootstrap(): Promise<void> {
     room: typeof rooms[string] | undefined,
     hotspot: Hotspot | null,
     target: DevEditTarget,
-    perspectiveFieldButtons: string,
-    perspectiveAdjustClass: string,
   ): string {
     if (target === 'walkablePolygon') {
       const pointCount = room?.walkablePolygon?.length ?? 0;
@@ -1320,18 +1353,33 @@ async function bootstrap(): Promise<void> {
     }
     if (target === 'perspective') {
       const perspective = ensureRoomPerspective(room ?? rooms.room1);
+      const yMin = 0;
+      const yMax = room?.height ?? 180;
       return `
         <div class="dev-inspector">
           <div class="dev-inspector-title">Perspective</div>
-          <div class="dev-row"><span class="dev-label">Current</span><span class="dev-kv">farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}</span></div>
-          <div class="dev-row"><span class="dev-label">Field</span>${perspectiveFieldButtons}</div>
-          <div class="dev-row">
-            <span class="dev-label">Adjust</span>
-            <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="-5">-5</button>
-            <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="-1">-1</button>
-            <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="1">+1</button>
-            <button type="button" class="dev-chip ${perspectiveAdjustClass}" data-dev-adjust="5">+5</button>
+          <div class="dev-row"><span class="dev-label">Canvas</span><span class="dev-tool-hint">Drag cyan (far) and gold (near) guide lines directly in the room.</span></div>
+          <div class="dev-row dev-slider-row">
+            <span class="dev-label">farY</span>
+            <input class="dev-slider" type="range" min="${yMin}" max="${yMax - 1}" step="1" value="${Math.round(perspective.farY)}" data-dev-perspective-value="farY">
+            <span class="dev-kv">${Math.round(perspective.farY)}</span>
           </div>
+          <div class="dev-row dev-slider-row">
+            <span class="dev-label">nearY</span>
+            <input class="dev-slider" type="range" min="${yMin + 1}" max="${yMax}" step="1" value="${Math.round(perspective.nearY)}" data-dev-perspective-value="nearY">
+            <span class="dev-kv">${Math.round(perspective.nearY)}</span>
+          </div>
+          <div class="dev-row dev-slider-row">
+            <span class="dev-label">farScale</span>
+            <input class="dev-slider" type="range" min="0.25" max="1.5" step="0.01" value="${perspective.farScale.toFixed(2)}" data-dev-perspective-value="farScale">
+            <span class="dev-kv">${perspective.farScale.toFixed(2)}x</span>
+          </div>
+          <div class="dev-row dev-slider-row">
+            <span class="dev-label">nearScale</span>
+            <input class="dev-slider" type="range" min="0.4" max="2.5" step="0.01" value="${perspective.nearScale.toFixed(2)}" data-dev-perspective-value="nearScale">
+            <span class="dev-kv">${perspective.nearScale.toFixed(2)}x</span>
+          </div>
+          <div class="dev-row"><span class="dev-label">Keyboard</span><span class="dev-tool-hint">Up/Down: nearY | Shift+Up/Down: farY | Left/Right: nearScale</span></div>
         </div>
       `;
     }
@@ -1669,27 +1717,17 @@ async function bootstrap(): Promise<void> {
     actorSize.height = clamp(actorSize.height + dh * step, 16, 180);
   }
 
-  function adjustRoomPerspective(context: GameContext, delta: number): void {
+  function nudgePerspective(
+    context: GameContext,
+    field: 'farY' | 'nearY' | 'farScale' | 'nearScale',
+    delta: number,
+  ): void {
     const room = rooms[context.currentRoomId];
     if (!room) {
       return;
     }
     const perspective = ensureRoomPerspective(room);
-    if (devPerspectiveField === 'farY') {
-      perspective.farY = clamp(perspective.farY + delta, 0, perspective.nearY - 1);
-      return;
-    }
-    if (devPerspectiveField === 'nearY') {
-      perspective.nearY = clamp(perspective.nearY + delta, perspective.farY + 1, room.height);
-      return;
-    }
-
-    const scaleStep = delta * 0.01;
-    if (devPerspectiveField === 'farScale') {
-      perspective.farScale = clamp(perspective.farScale + scaleStep, 0.25, perspective.nearScale);
-      return;
-    }
-    perspective.nearScale = clamp(perspective.nearScale + scaleStep, perspective.farScale, 4);
+    setPerspectiveValue(room, perspective, field, perspective[field] + delta);
   }
 
   window.addEventListener('beforeunload', () => {
@@ -2378,8 +2416,42 @@ function isDevEditTarget(value: string | undefined): value is DevEditTarget {
     || value === 'perspective';
 }
 
-function isDevPerspectiveField(value: string | undefined): value is DevPerspectiveField {
+function isPerspectiveValueField(value: string | undefined): value is 'farY' | 'nearY' | 'farScale' | 'nearScale' {
   return value === 'farY' || value === 'nearY' || value === 'farScale' || value === 'nearScale';
+}
+
+function setPerspectiveValue(
+  room: { height: number },
+  perspective: { farY: number; nearY: number; farScale: number; nearScale: number },
+  field: 'farY' | 'nearY' | 'farScale' | 'nearScale',
+  value: number,
+): void {
+  if (field === 'farY') {
+    perspective.farY = clamp(Math.round(value), 0, Math.round(perspective.nearY) - 1);
+    return;
+  }
+  if (field === 'nearY') {
+    perspective.nearY = clamp(Math.round(value), Math.round(perspective.farY) + 1, room.height);
+    return;
+  }
+  if (field === 'farScale') {
+    perspective.farScale = clamp(value, 0.25, perspective.nearScale);
+    return;
+  }
+  perspective.nearScale = clamp(value, perspective.farScale, 4);
+}
+
+function hitTestPerspectiveGuide(
+  point: Point,
+  perspective: { farY: number; nearY: number },
+): 'farY' | 'nearY' | null {
+  const farDistance = Math.abs(point.y - perspective.farY);
+  const nearDistance = Math.abs(point.y - perspective.nearY);
+  const maxDistance = 5;
+  if (farDistance > maxDistance && nearDistance > maxDistance) {
+    return null;
+  }
+  return farDistance <= nearDistance ? 'farY' : 'nearY';
 }
 
 function makeCursorCss(svg: string, hotspotX: number, hotspotY: number, fallback: 'default' | 'pointer' | 'crosshair'): string {
