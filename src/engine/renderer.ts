@@ -210,69 +210,105 @@ export class Renderer {
     actorBaseSize: { width: number; height: number } | undefined,
     actorFeetY: number | undefined,
   ): void {
-    if (walkablePolygon && walkablePolygon.length > 0) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(walkablePolygon[0].x, walkablePolygon[0].y);
-      for (let i = 1; i < walkablePolygon.length; i += 1) {
-        this.ctx.lineTo(walkablePolygon[i].x, walkablePolygon[i].y);
-      }
-      if (walkablePolygon.length >= 3) {
-        this.ctx.closePath();
-        this.ctx.fillStyle = 'rgba(126, 242, 154, 0.14)';
-        this.ctx.fill();
-      }
-      this.ctx.strokeStyle = editTarget === 'walkablePolygon' ? '#ff5ca2' : '#7ef29a';
-      this.ctx.lineWidth = editTarget === 'walkablePolygon' ? 2 : 1;
-      this.ctx.stroke();
-      this.ctx.lineWidth = 1;
-
-      for (let i = 0; i < walkablePolygon.length; i += 1) {
-        const vertex = walkablePolygon[i];
-        const isDragged = polygonDragVertexIndex === i;
-        const isHovered = polygonHoverVertexIndex === i;
-        const radius = isDragged ? 4 : isHovered ? 3.5 : 3;
+    if (editTarget === 'walkablePolygon') {
+      if (walkablePolygon && walkablePolygon.length > 0) {
         this.ctx.beginPath();
-        this.ctx.arc(vertex.x, vertex.y, radius, 0, Math.PI * 2);
-        this.ctx.fillStyle = isDragged ? '#ffd36e' : editTarget === 'walkablePolygon' ? '#ff5ca2' : '#7ef29a';
-        this.ctx.fill();
-        this.ctx.strokeStyle = '#1f1524';
-        this.ctx.lineWidth = 1;
+        this.ctx.moveTo(walkablePolygon[0].x, walkablePolygon[0].y);
+        for (let i = 1; i < walkablePolygon.length; i += 1) {
+          this.ctx.lineTo(walkablePolygon[i].x, walkablePolygon[i].y);
+        }
+        if (walkablePolygon.length >= 3) {
+          this.ctx.closePath();
+          this.ctx.fillStyle = 'rgba(126, 242, 154, 0.14)';
+          this.ctx.fill();
+        }
+        this.ctx.strokeStyle = '#ff5ca2';
+        this.ctx.lineWidth = 2;
         this.ctx.stroke();
+        this.ctx.lineWidth = 1;
+
+        for (let i = 0; i < walkablePolygon.length; i += 1) {
+          const vertex = walkablePolygon[i];
+          const isDragged = polygonDragVertexIndex === i;
+          const isHovered = polygonHoverVertexIndex === i;
+          const radius = isDragged ? 4 : isHovered ? 3.5 : 3;
+          this.ctx.beginPath();
+          this.ctx.arc(vertex.x, vertex.y, radius, 0, Math.PI * 2);
+          this.ctx.fillStyle = isDragged ? '#ffd36e' : '#ff5ca2';
+          this.ctx.fill();
+          this.ctx.strokeStyle = '#1f1524';
+          this.ctx.lineWidth = 1;
+          this.ctx.stroke();
+        }
       }
+      return;
+    }
+
+    if (editTarget === 'walkTarget') {
+      this.ctx.font = '8px monospace';
+      for (const hotspot of hotspots) {
+        const isSelected = hotspot.id === selectedHotspotId;
+        this.ctx.strokeStyle = '#1f1524';
+        this.ctx.lineWidth = isSelected ? 3 : 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(hotspot.walkTarget.x - 3, hotspot.walkTarget.y);
+        this.ctx.lineTo(hotspot.walkTarget.x + 3, hotspot.walkTarget.y);
+        this.ctx.moveTo(hotspot.walkTarget.x, hotspot.walkTarget.y - 3);
+        this.ctx.lineTo(hotspot.walkTarget.x, hotspot.walkTarget.y + 3);
+        this.ctx.stroke();
+
+        this.ctx.strokeStyle = isSelected ? '#ff5ca2' : '#98ffbf';
+        this.ctx.lineWidth = isSelected ? 2 : 1.5;
+        this.ctx.beginPath();
+        this.ctx.moveTo(hotspot.walkTarget.x - 3, hotspot.walkTarget.y);
+        this.ctx.lineTo(hotspot.walkTarget.x + 3, hotspot.walkTarget.y);
+        this.ctx.moveTo(hotspot.walkTarget.x, hotspot.walkTarget.y - 3);
+        this.ctx.lineTo(hotspot.walkTarget.x, hotspot.walkTarget.y + 3);
+        this.ctx.stroke();
+        this.ctx.lineWidth = 1;
+        if (isSelected) {
+          this.ctx.beginPath();
+          this.ctx.arc(hotspot.walkTarget.x, hotspot.walkTarget.y, 5, 0, Math.PI * 2);
+          this.ctx.strokeStyle = '#ff5ca2';
+          this.ctx.stroke();
+          this.drawWalkTargetHandle(hotspot.walkTarget.x, hotspot.walkTarget.y);
+        }
+        this.ctx.fillStyle = 'rgba(24, 12, 8, 0.8)';
+        this.ctx.fillRect(Math.round(hotspot.walkTarget.x + 4), Math.round(hotspot.walkTarget.y - 11), hotspot.name.length * 5 + 4, 9);
+        this.ctx.fillStyle = '#f6edc8';
+        this.ctx.fillText(hotspot.name, Math.round(hotspot.walkTarget.x + 6), Math.round(hotspot.walkTarget.y - 4.5));
+      }
+      return;
     }
 
     for (const hotspot of hotspots) {
-      const spriteBounds = hotspot.spriteBounds ?? hotspot.bounds;
-
-      this.ctx.strokeStyle = '#39c5ff';
-      this.ctx.lineWidth = 1;
-      this.ctx.strokeRect(spriteBounds.x, spriteBounds.y, spriteBounds.w, spriteBounds.h);
-
-      this.ctx.strokeStyle = '#7ef29a';
-      this.ctx.beginPath();
-      this.ctx.moveTo(hotspot.walkTarget.x - 3, hotspot.walkTarget.y);
-      this.ctx.lineTo(hotspot.walkTarget.x + 3, hotspot.walkTarget.y);
-      this.ctx.moveTo(hotspot.walkTarget.x, hotspot.walkTarget.y - 3);
-      this.ctx.lineTo(hotspot.walkTarget.x, hotspot.walkTarget.y + 3);
-      this.ctx.stroke();
-
-      if (hotspot.id !== selectedHotspotId) {
+      if (editTarget === 'bounds') {
+        const isSelected = hotspot.id === selectedHotspotId;
+        this.ctx.strokeStyle = isSelected ? '#ff5ca2' : '#7ef29a';
+        this.ctx.lineWidth = isSelected ? 2 : 1;
+        this.ctx.strokeRect(hotspot.bounds.x, hotspot.bounds.y, hotspot.bounds.w, hotspot.bounds.h);
+        this.ctx.lineWidth = 1;
+        if (isSelected) {
+          this.drawRectHandles(hotspot.bounds);
+        }
         continue;
       }
 
-      this.ctx.strokeStyle = '#ff5ca2';
-      this.ctx.lineWidth = 2;
-      if (editTarget === 'walkTarget') {
-        this.ctx.beginPath();
-        this.ctx.arc(hotspot.walkTarget.x, hotspot.walkTarget.y, 5, 0, Math.PI * 2);
-        this.ctx.stroke();
-        this.drawWalkTargetHandle(hotspot.walkTarget.x, hotspot.walkTarget.y);
-      } else {
-        const selectedRect = editTarget === 'spriteBounds' ? spriteBounds : hotspot.bounds;
-        this.ctx.strokeRect(selectedRect.x, selectedRect.y, selectedRect.w, selectedRect.h);
-        this.drawRectHandles(selectedRect);
+      if (editTarget === 'spriteBounds') {
+        const spriteBounds = hotspot.spriteBounds
+          ?? (hotspot.id === selectedHotspotId && hotspot.sprite ? hotspot.bounds : null);
+        if (!spriteBounds) {
+          continue;
+        }
+        const isSelected = hotspot.id === selectedHotspotId;
+        this.ctx.strokeStyle = isSelected ? '#ff5ca2' : '#39c5ff';
+        this.ctx.lineWidth = isSelected ? 2 : 1;
+        this.ctx.strokeRect(spriteBounds.x, spriteBounds.y, spriteBounds.w, spriteBounds.h);
+        this.ctx.lineWidth = 1;
+        if (isSelected) {
+          this.drawRectHandles(spriteBounds);
+        }
       }
-      this.ctx.lineWidth = 1;
     }
 
     if (editTarget === 'perspective' && perspective && actorBaseSize && typeof actorFeetY === 'number') {

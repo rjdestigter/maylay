@@ -374,6 +374,24 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
+      const context = actor.getSnapshot().context;
+      const visibleHotspots = getVisibleHotspots(context);
+      if (devEditTarget === 'walkTarget') {
+        const candidate = findHotspotByWalkTarget(point, visibleHotspots, 8);
+        selectedHotspotId = candidate?.id ?? null;
+        return;
+      }
+      if (devEditTarget === 'spriteBounds') {
+        const candidate = findHotspotByRect(point, visibleHotspots, 'spriteBounds');
+        selectedHotspotId = candidate?.id ?? null;
+        return;
+      }
+      if (devEditTarget === 'bounds') {
+        const candidate = findHotspotByRect(point, visibleHotspots, 'bounds');
+        selectedHotspotId = candidate?.id ?? null;
+        return;
+      }
+
       selectedHotspotId = hotspot?.id === SELF_HOTSPOT_ID ? null : hotspot?.id ?? null;
     },
   });
@@ -421,35 +439,36 @@ async function bootstrap(): Promise<void> {
         startVertex: { ...polygon[vertexIndex] },
       };
     } else {
-      if (!selectedHotspotId) {
-        return;
-      }
-      const hotspot = room.hotspots.find((spot) => spot.id === selectedHotspotId);
-      if (!hotspot) {
-        return;
-      }
       if (devEditTarget === 'walkTarget') {
-        if (!isPointNear(point, hotspot.walkTarget, 6)) {
+        const candidate = findHotspotByWalkTarget(point, getVisibleHotspots(snapshot.context), 8);
+        if (!candidate) {
           return;
         }
+        selectedHotspotId = candidate.id;
         devDragState = {
           target: 'walkTarget',
-          hotspotId: hotspot.id,
+          hotspotId: candidate.id,
           startPoint: point,
-          startWalkTarget: { ...hotspot.walkTarget },
+          startWalkTarget: { ...candidate.walkTarget },
         };
       } else {
-        const rect = getEditableRect(hotspot, devEditTarget);
-        const handle = hitTestRectHandle(point, rect);
-        if (!handle) {
+        const visibleHotspots = getVisibleHotspots(snapshot.context);
+        const hitHandle = findRectHandleHit(
+          point,
+          visibleHotspots,
+          devEditTarget,
+          selectedHotspotId,
+        );
+        if (!hitHandle) {
           return;
         }
+        selectedHotspotId = hitHandle.hotspot.id;
         devDragState = {
           target: devEditTarget,
-          hotspotId: hotspot.id,
-          handle,
+          hotspotId: hitHandle.hotspot.id,
+          handle: hitHandle.handle,
           startPoint: point,
-          startRect: { ...rect },
+          startRect: { ...getEditableRect(hitHandle.hotspot, devEditTarget) },
         };
       }
     }
@@ -1125,28 +1144,25 @@ async function bootstrap(): Promise<void> {
       return vertexIndex >= 0 ? 'grab' : null;
     }
 
-    if (!activeHotspotId) {
-      return null;
-    }
-
-    const hotspot = room.hotspots.find((spot) => spot.id === activeHotspotId);
-    if (!hotspot) {
-      return null;
-    }
-
     if (editTarget === 'walkTarget') {
       if (dragState?.target === 'walkTarget') {
         return 'grabbing';
       }
-      return isPointNear(point, hotspot.walkTarget, 6) ? 'grab' : null;
+      const context = actor.getSnapshot().context;
+      const candidate = findHotspotByWalkTarget(point, getVisibleHotspots(context), 8);
+      return candidate ? 'grab' : null;
     }
 
     if (editTarget !== 'bounds' && editTarget !== 'spriteBounds') {
       return null;
     }
-
-    const rect = getEditableRect(hotspot, editTarget);
-    const handle = hitTestRectHandle(point, rect);
+    const hitHandle = findRectHandleHit(
+      point,
+      getVisibleHotspots(context),
+      editTarget,
+      activeHotspotId,
+    );
+    const handle = hitHandle?.handle;
     if (!handle) {
       return null;
     }
@@ -2014,6 +2030,70 @@ function hitTestRectHandle(point: Point, rect: Rect): DevRectHandle | null {
     }
   }
   return null;
+}
+
+function findHotspotByWalkTarget(point: Point, hotspots: Hotspot[], radius: number): Hotspot | null {
+  let best: Hotspot | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const hotspot of hotspots) {
+    const distance = Math.hypot(point.x - hotspot.walkTarget.x, point.y - hotspot.walkTarget.y);
+    if (distance <= radius && distance < bestDistance) {
+      best = hotspot;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function findHotspotByRect(
+  point: Point,
+  hotspots: Hotspot[],
+  target: 'bounds' | 'spriteBounds',
+): Hotspot | null {
+  for (let index = hotspots.length - 1; index >= 0; index -= 1) {
+    const hotspot = hotspots[index];
+    const rect = target === 'bounds' ? hotspot.bounds : hotspot.spriteBounds;
+    if (!rect) {
+      continue;
+    }
+    if (isPointInRect(point, rect)) {
+      return hotspot;
+    }
+  }
+  return null;
+}
+
+function findRectHandleHit(
+  point: Point,
+  hotspots: Hotspot[],
+  target: 'bounds' | 'spriteBounds',
+  preferredHotspotId: string | null,
+): { hotspot: Hotspot; handle: DevRectHandle } | null {
+  const ordered = preferredHotspotId
+    ? [
+      ...hotspots.filter((spot) => spot.id === preferredHotspotId),
+      ...hotspots.filter((spot) => spot.id !== preferredHotspotId),
+    ]
+    : hotspots;
+
+  for (const hotspot of ordered) {
+    const rect = target === 'bounds' ? hotspot.bounds : hotspot.spriteBounds;
+    if (!rect) {
+      continue;
+    }
+    const handle = hitTestRectHandle(point, rect);
+    if (handle) {
+      return { hotspot, handle };
+    }
+  }
+  return null;
+}
+
+function isPointInRect(point: Point, rect: Rect): boolean {
+  return point.x >= rect.x
+    && point.y >= rect.y
+    && point.x <= rect.x + rect.w
+    && point.y <= rect.y + rect.h;
 }
 
 function hitTestPolygonVertex(point: Point, polygon: Point[]): number {
