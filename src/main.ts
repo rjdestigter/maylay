@@ -8,8 +8,8 @@ import { createInputController } from './engine/input';
 import { Renderer } from './engine/renderer';
 import { resolveInteraction } from './game/scripts';
 import { gameMachine, type GameContext } from './game/stateMachine';
-import { isHotspotVisible, rooms } from './game/rooms/room1';
-import type { Hotspot, Point, Rect, Verb } from './game/types';
+import { defaultRoomId, isHotspotVisible, rooms } from './game/rooms/rooms';
+import type { Hotspot, Point, Rect, RoomDefinition, Verb } from './game/types';
 
 const WALK_SPEED = 80;
 const STOP_DISTANCE = 2;
@@ -192,6 +192,7 @@ async function bootstrap(): Promise<void> {
   let wasInDialogue = false;
   let lastSpokenDialogueKey: string | null = null;
   let devPersistStatus = 'Room persistence: not saved';
+  let pendingRoomEntryPoint: Point | null = null;
 
   const refreshAudioLabels = (): void => {
     musicToggle.textContent = musicEnabled ? (musicBlocked ? 'Music: On (tap)' : 'Music: On') : 'Music: Off';
@@ -676,6 +677,9 @@ async function bootstrap(): Promise<void> {
     if (!changed && button.dataset.devAction === 'add-hotspot') {
       changed = addHotspot(actor.getSnapshot().context);
     }
+    if (!changed && button.dataset.devAction === 'add-room-link-hotspot') {
+      changed = addRoomLinkHotspot(actor.getSnapshot().context);
+    }
     if (!changed && button.dataset.devAction === 'edit-hotspot-description') {
       changed = editSelectedHotspotDescription(actor.getSnapshot().context);
     }
@@ -759,7 +763,8 @@ async function bootstrap(): Promise<void> {
 
     if (context.currentRoomId !== previousRoomId) {
       previousRoomId = context.currentRoomId;
-      actorPosition = spawnPointForRoom(context.currentRoomId);
+      actorPosition = pendingRoomEntryPoint ?? spawnPointForRoom(context.currentRoomId);
+      pendingRoomEntryPoint = null;
       currentWalkPath = [];
       currentWalkKey = null;
       voicePlayer.cancel();
@@ -1087,6 +1092,26 @@ async function bootstrap(): Promise<void> {
 
     // No selected action behaves as implicit walk-to, with auto-enter for open doors.
     if (pending.verb === null) {
+      if (hotspot.targetRoomId) {
+        if (!rooms[hotspot.targetRoomId]) {
+          actor.send({
+            type: 'SCRIPT_RESOLVED',
+            result: {
+              dialogueLines: [`That path should lead to "${hotspot.targetRoomId}", but that room is not loaded.`],
+            },
+          });
+          return;
+        }
+        pendingRoomEntryPoint = hotspot.targetRoomEntryPoint ? { ...hotspot.targetRoomEntryPoint } : null;
+        actor.send({
+          type: 'SCRIPT_RESOLVED',
+          result: {
+            dialogueLines: [],
+            roomChangeTo: hotspot.targetRoomId,
+          },
+        });
+        return;
+      }
       if (hotspot.id === 'door' && context.flags.doorOpen) {
         actor.send({
           type: 'SCRIPT_RESOLVED',
@@ -1249,7 +1274,7 @@ async function bootstrap(): Promise<void> {
 
     const room = rooms[context.currentRoomId];
     const hotspot = room?.hotspots.find((spot) => spot.id === selectedHotspotId) ?? null;
-    const perspective = ensureRoomPerspective(room ?? rooms.room1);
+    const perspective = ensureRoomPerspective(room ?? getConfiguredDefaultRoom());
     const selectedStatus = hotspot
       ? `<span class="dev-status"><span class="dev-status-dot"></span>Selected: ${hotspot.id}</span>`
       : '<span class="dev-status muted">Selected: none</span>';
@@ -1274,6 +1299,7 @@ async function bootstrap(): Promise<void> {
         ${selectedStatus}
         <button type="button" class="dev-chip" data-dev-action="clear-selection">Clear</button>
         <button type="button" class="dev-chip" data-dev-action="add-hotspot">Add hotspot</button>
+        <button type="button" class="dev-chip" data-dev-action="add-room-link-hotspot">Add room link</button>
         <button type="button" class="dev-chip ${hotspot ? '' : 'muted'}" data-dev-action="edit-hotspot-description">Edit description</button>
         <button type="button" class="dev-chip" data-dev-action="save-room">Save room</button>
         <button type="button" class="dev-chip" data-dev-action="toggle-advanced">${devShowAdvanced ? 'Hide debug' : 'Show debug'}</button>
@@ -1324,7 +1350,7 @@ async function bootstrap(): Promise<void> {
       }
     }
     const line5 = `Actor size +/-: ${actorSize.width}x${actorSize.height}`;
-    const line6 = `Actor render scale: ${getPerspectiveScale(room ?? rooms.room1, actorPosition.y).toFixed(2)}x`;
+    const line6 = `Actor render scale: ${getPerspectiveScale(room ?? getConfiguredDefaultRoom(), actorPosition.y).toFixed(2)}x`;
     const line7 = `Walkable points: ${rooms[context.currentRoomId]?.walkablePolygon?.length ?? 0}`;
     const line8 = `Perspective drag: farY=${hoveredPerspectiveHandle === 'farY' ? 'hover' : '-'} nearY=${hoveredPerspectiveHandle === 'nearY' ? 'hover' : '-'}`;
     const line9 = `Perspective values: farY=${perspective.farY} nearY=${perspective.nearY} farScale=${perspective.farScale.toFixed(2)} nearScale=${perspective.nearScale.toFixed(2)}`;
@@ -1352,7 +1378,7 @@ async function bootstrap(): Promise<void> {
       `;
     }
     if (target === 'perspective') {
-      const perspective = ensureRoomPerspective(room ?? rooms.room1);
+      const perspective = ensureRoomPerspective(room ?? getConfiguredDefaultRoom());
       const yMin = 0;
       const yMax = room?.height ?? 180;
       return `
@@ -1393,11 +1419,15 @@ async function bootstrap(): Promise<void> {
     }
 
     if (target === 'bounds') {
+      const linkLine = hotspot.targetRoomId
+        ? `<div class="dev-row"><span class="dev-label">Room Link</span><span class="dev-kv">${escapeHtml(hotspot.targetRoomId)}</span></div>`
+        : '';
       return `
         <div class="dev-inspector">
           <div class="dev-inspector-title">Hotspot Bounds</div>
           <div class="dev-row"><span class="dev-label">Hotspot</span><span class="dev-kv">${escapeHtml(hotspot.id)}</span></div>
           <div class="dev-row"><span class="dev-label">Rect</span><span class="dev-kv">x=${hotspot.bounds.x} y=${hotspot.bounds.y} w=${hotspot.bounds.w} h=${hotspot.bounds.h}</span></div>
+          ${linkLine}
           <div class="dev-row"><span class="dev-label">Description</span><span class="dev-tool-hint">${escapeHtml(hotspot.description?.trim() || '(no description)')}</span></div>
         </div>
       `;
@@ -1447,9 +1477,13 @@ async function bootstrap(): Promise<void> {
     }
 
     const room = rooms[context.currentRoomId];
+    const hoveredHotspot = hoveredHotspotId && hoveredHotspotId !== SELF_HOTSPOT_ID
+      ? room?.hotspots.find((spot) => spot.id === hoveredHotspotId) ?? null
+      : null;
     const hotspotName = hoveredHotspotId === SELF_HOTSPOT_ID
       ? 'yourself'
-      : room?.hotspots.find((spot) => spot.id === hoveredHotspotId)?.name ?? '';
+      : hoveredHotspot?.name ?? '';
+    const walkPrompt = hoveredHotspot?.walkPrompt?.trim();
     const selectedItemName =
       context.inventory.find((item) => item.id === context.selectedInventoryItemId)?.name ?? context.selectedInventoryItemId;
 
@@ -1463,7 +1497,7 @@ async function bootstrap(): Promise<void> {
 
     if (hotspotName && context.selectedVerb === null) {
       return {
-        prefix: 'Walk to',
+        prefix: walkPrompt || 'Walk to',
         target: hotspotName,
       };
     }
@@ -1519,7 +1553,7 @@ async function bootstrap(): Promise<void> {
   }
 
   function getSelfHotspot(context: GameContext): Hotspot {
-    const room = rooms[context.currentRoomId] ?? rooms.room1;
+    const room = rooms[context.currentRoomId] ?? getConfiguredDefaultRoom();
     const perspectiveScale = getPerspectiveScale(room, actorPosition.y);
     const width = Math.max(8, Math.round(actorSize.width * perspectiveScale));
     const height = Math.max(8, Math.round(actorSize.height * perspectiveScale));
@@ -1625,6 +1659,71 @@ async function bootstrap(): Promise<void> {
     return true;
   }
 
+  function addRoomLinkHotspot(context: GameContext): boolean {
+    const room = rooms[context.currentRoomId];
+    if (!room) {
+      return false;
+    }
+
+    const allRoomIds = Object.keys(rooms).filter((id) => id !== room.id);
+    const suggestedTarget = allRoomIds[0] ?? room.id;
+    const targetRoomIdInput = window.prompt('Target room id:', suggestedTarget);
+    if (targetRoomIdInput === null) {
+      return false;
+    }
+    const targetRoomId = targetRoomIdInput.trim();
+    if (!targetRoomId) {
+      return false;
+    }
+
+    const suggestedId = uniqueHotspotId(room, normalizeHotspotId(`to_${targetRoomId}`) || nextHotspotId(room));
+    const rawId = window.prompt('Link hotspot id:', suggestedId);
+    if (rawId === null) {
+      return false;
+    }
+    const normalizedId = normalizeHotspotId(rawId);
+    if (!normalizedId) {
+      return false;
+    }
+    const id = uniqueHotspotId(room, normalizedId);
+
+    const defaultName = `Path to ${targetRoomId}`;
+    const nameInput = window.prompt('Link name (shown on hover):', defaultName);
+    if (nameInput === null) {
+      return false;
+    }
+    const name = nameInput.trim() || defaultName;
+
+    const descriptionInput = window.prompt('LOOK description (optional):', `A path leading to ${targetRoomId}.`);
+    if (descriptionInput === null) {
+      return false;
+    }
+    const description = descriptionInput.trim() || undefined;
+    const walkPromptInput = window.prompt('Hover verb prefix (optional):', 'Walk to');
+    if (walkPromptInput === null) {
+      return false;
+    }
+    const walkPrompt = walkPromptInput.trim() || undefined;
+
+    const defaultWidth = 28;
+    const defaultHeight = 20;
+    const x = clamp(Math.round(actorPosition.x - defaultWidth * 0.5), 0, room.width - defaultWidth);
+    const y = clamp(Math.round(actorPosition.y - defaultHeight), 0, room.height - defaultHeight);
+
+    room.hotspots.push({
+      id,
+      name,
+      description,
+      targetRoomId,
+      walkPrompt,
+      bounds: { x, y, w: defaultWidth, h: defaultHeight },
+      walkTarget: { x: Math.round(actorPosition.x), y: Math.round(actorPosition.y) },
+    });
+    selectedHotspotId = id;
+    devEditTarget = 'bounds';
+    return true;
+  }
+
   function editSelectedHotspotDescription(context: GameContext): boolean {
     const room = rooms[context.currentRoomId];
     if (!room || !selectedHotspotId) {
@@ -1675,6 +1774,38 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
+    try {
+      await persistRoomDefinition(room);
+
+      let createdCount = 0;
+      const linkedRoomIds = Array.from(
+        new Set(
+          room.hotspots
+            .map((spot) => spot.targetRoomId?.trim() ?? '')
+            .filter((roomId) => roomId.length > 0),
+        ),
+      );
+      for (const linkedRoomId of linkedRoomIds) {
+        if (rooms[linkedRoomId]) {
+          continue;
+        }
+        const placeholderRoom = createPlaceholderRoom(linkedRoomId, room);
+        await persistRoomDefinition(placeholderRoom);
+        rooms[linkedRoomId] = placeholderRoom;
+        createdCount += 1;
+      }
+
+      const now = new Date();
+      const suffix = createdCount > 0 ? ` (+${createdCount} linked room file${createdCount === 1 ? '' : 's'})` : '';
+      devPersistStatus = `Room persistence: saved at ${now.toLocaleTimeString()}${suffix}`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      devPersistStatus = `Room persistence: failed (${message})`;
+    }
+    renderUi(context, actor.getSnapshot().matches('dialogue'));
+  }
+
+  async function persistRoomDefinition(room: RoomDefinition): Promise<void> {
     const payload = {
       room: {
         id: room.id,
@@ -1684,31 +1815,43 @@ async function bootstrap(): Promise<void> {
         backgroundColor: room.backgroundColor,
         hotspots: room.hotspots,
         scripts: room.scripts ?? [],
+        interactionChart: room.interactionChart,
+        parallelStateChart: room.parallelStateChart,
+        xstateChart: room.xstateChart,
         walkablePolygon: room.walkablePolygon ?? [],
         perspective: room.perspective,
         overlayText: room.overlayText,
       },
     };
 
-    try {
-      const response = await fetch(`/api/rooms/${encodeURIComponent(room.id)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(`HTTP ${response.status} ${message}`);
-      }
-      const now = new Date();
-      devPersistStatus = `Room persistence: saved at ${now.toLocaleTimeString()}`;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      devPersistStatus = `Room persistence: failed (${message})`;
+    const response = await fetch(`/api/rooms/${encodeURIComponent(room.id)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(`HTTP ${response.status} ${message}`);
     }
-    renderUi(context, actor.getSnapshot().matches('dialogue'));
+  }
+
+  function createPlaceholderRoom(roomId: string, sourceRoom: RoomDefinition): RoomDefinition {
+    return {
+      id: roomId,
+      name: titleFromId(roomId),
+      width: sourceRoom.width,
+      height: sourceRoom.height,
+      backgroundColor: '#1f2b3d',
+      hotspots: [],
+      scripts: [],
+      parallelStateChart: undefined,
+      xstateChart: undefined,
+      walkablePolygon: [],
+      perspective: sourceRoom.perspective ? { ...sourceRoom.perspective } : undefined,
+      overlayText: `${titleFromId(roomId)} placeholder`,
+    };
   }
 
   function adjustActorSize(dw: number, dh: number, fast: boolean): void {
@@ -2256,6 +2399,14 @@ function ensureRoomPerspective(room: { perspective?: { farY: number; nearY: numb
     };
   }
   return room.perspective;
+}
+
+function getConfiguredDefaultRoom(): RoomDefinition {
+  const room = rooms[defaultRoomId];
+  if (!room) {
+    throw new Error(`Default room "${defaultRoomId}" is not loaded`);
+  }
+  return room;
 }
 
 function clamp(value: number, min: number, max: number): number {

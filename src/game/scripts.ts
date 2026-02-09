@@ -1,7 +1,18 @@
 import fallbackJson from './dialogue/fallbacks.json';
 import interactionsJson from './dialogue/interactions.json';
+import { assign, createActor, setup } from 'xstate';
 import type { GameContext } from './stateMachine';
-import type { Hotspot, RoomDefinition, RoomScriptRule, ScriptResult, Verb } from './types';
+import type {
+  Hotspot,
+  RoomDefinition,
+  RoomInteractionChart,
+  RoomParallelStateChart,
+  RoomParallelTransition,
+  RoomInteractionTransition,
+  RoomScriptRule,
+  ScriptResult,
+  Verb,
+} from './types';
 
 type FallbackConfig = {
   lookDefault: string[];
@@ -139,11 +150,48 @@ const DEFAULT_INTERACTIONS: InteractionLinesConfig = {
 
 const FALLBACKS = loadFallbackConfig(fallbackJson);
 const INTERACTIONS = loadInteractionsConfig(interactionsJson);
+type RoomChartEvent = {
+  type: Verb;
+  hotspotId: string;
+  inventoryItemId: string | null;
+  flags: Record<string, boolean>;
+};
+type RoomChartContext = {
+  lastResult: ScriptResult | null;
+  emission: number;
+};
+type RoomChartActorRecord = {
+  chartRef: Record<string, unknown>;
+  actor: ReturnType<typeof createActor<any>>;
+};
+const roomChartActors = new Map<string, RoomChartActorRecord>();
 
 export function resolveInteraction(context: GameContext, room: RoomDefinition, hotspot: Hotspot): ScriptResult {
   const verb = context.pendingInteraction?.verb ?? context.selectedVerb;
   const selectedItem = context.pendingInteraction?.inventoryItemId ?? context.selectedInventoryItemId;
   const isSelf = hotspot.id === '__self__';
+
+  const xstateChartResult = resolveXStateChart(room, hotspot.id, verb, selectedItem, context.flags);
+  if (xstateChartResult) {
+    return xstateChartResult;
+  }
+
+  const parallelChartResult = resolveParallelStateChart(
+    room.parallelStateChart,
+    room.id,
+    hotspot.id,
+    verb,
+    selectedItem,
+    context.flags,
+  );
+  if (parallelChartResult) {
+    return parallelChartResult;
+  }
+
+  const chartResult = resolveInteractionChart(room.interactionChart, room.id, hotspot.id, verb, selectedItem, context.flags);
+  if (chartResult) {
+    return chartResult;
+  }
 
   const scriptedResult = resolveScriptedRule(room.scripts, hotspot.id, verb, selectedItem, context.flags);
   if (scriptedResult) {
@@ -249,6 +297,349 @@ export function resolveInteraction(context: GameContext, room: RoomDefinition, h
   }
 
   return { dialogueLines: [pickRandomLine(FALLBACKS.genericDefault)] };
+}
+
+function resolveXStateChart(
+  room: RoomDefinition,
+  hotspotId: string,
+  verb: Verb | null,
+  selectedItemId: string | null,
+  flags: Record<string, boolean>,
+): ScriptResult | null {
+  if (!room.xstateChart || !verb) {
+    return null;
+  }
+  const actor = ensureRoomChartActor(room.id, room.xstateChart);
+  if (!actor) {
+    return null;
+  }
+
+  const beforeSnapshot = actor.getSnapshot();
+  const beforeEmission = beforeSnapshot.context.emission as number;
+  const event: RoomChartEvent = {
+    type: verb,
+    hotspotId,
+    inventoryItemId: selectedItemId,
+    flags,
+  };
+  actor.send(event);
+  const afterSnapshot = actor.getSnapshot();
+  const afterEmission = afterSnapshot.context.emission as number;
+  if (afterEmission <= beforeEmission) {
+    return null;
+  }
+  const result = afterSnapshot.context.lastResult as ScriptResult | null;
+  return result ? cloneScriptResult(result) : null;
+}
+
+function ensureRoomChartActor(
+  roomId: string,
+  chart: Record<string, unknown>,
+): ReturnType<typeof createActor<any>> | null {
+  const existing = roomChartActors.get(roomId);
+  if (existing && existing.chartRef === chart) {
+    return existing.actor;
+  }
+
+  if (existing) {
+    existing.actor.stop();
+    roomChartActors.delete(roomId);
+  }
+
+  if (!isObject(chart)) {
+    return null;
+  }
+
+  const roomChartMachine = setup({
+    types: {
+      context: {} as RoomChartContext,
+      events: {} as RoomChartEvent,
+    },
+    guards: {
+      matchInteraction: ({ event }, params: unknown) => {
+        if (!isObject(params)) {
+          return false;
+        }
+        const hotspotId = typeof params.hotspotId === 'string' ? params.hotspotId : undefined;
+        if (hotspotId && event.hotspotId !== hotspotId) {
+          return false;
+        }
+        if (params.requireNoInventoryItem === true && event.inventoryItemId !== null) {
+          return false;
+        }
+        if (typeof params.inventoryItemId === 'string' && event.inventoryItemId !== params.inventoryItemId) {
+          return false;
+        }
+        const flagsAll = toStringArray(params.flagsAll);
+        if (flagsAll && flagsAll.some((flag) => !event.flags[flag])) {
+          return false;
+        }
+        const flagsNot = toStringArray(params.flagsNot);
+        if (flagsNot && flagsNot.some((flag) => event.flags[flag])) {
+          return false;
+        }
+        const flagsAny = toStringArray(params.flagsAny);
+        if (flagsAny && flagsAny.length > 0 && !flagsAny.some((flag) => event.flags[flag])) {
+          return false;
+        }
+        return true;
+      },
+    },
+    actions: {
+      emitResult: assign(({ context }, params: unknown) => {
+        const parsedResult = parseScriptResultFromUnknown(isObject(params) ? params.result : undefined);
+        if (!parsedResult) {
+          return context;
+        }
+        return {
+          ...context,
+          lastResult: cloneScriptResult(parsedResult),
+          emission: context.emission + 1,
+        };
+      }),
+    },
+  }).createMachine({
+    ...(chart as any),
+    context: {
+      lastResult: null,
+      emission: 0,
+    } satisfies RoomChartContext,
+  });
+
+  const actor = createActor(roomChartMachine);
+  actor.start();
+  roomChartActors.set(roomId, { chartRef: chart, actor });
+  return actor;
+}
+
+function resolveParallelStateChart(
+  chart: RoomParallelStateChart | undefined,
+  roomId: string,
+  hotspotId: string,
+  verb: Verb | null,
+  selectedItemId: string | null,
+  flags: Record<string, boolean>,
+): ScriptResult | null {
+  if (!chart || !verb) {
+    return null;
+  }
+
+  const nodeStates = getActiveNodeStates(chart, roomId, flags);
+  const nodeStateUniverse = collectNodeStateUniverse(chart);
+
+  for (const transition of chart.transitions) {
+    if (!parallelTransitionMatches(transition, hotspotId, verb, selectedItemId, flags, nodeStates)) {
+      continue;
+    }
+    const nextResult = cloneScriptResult(transition.result);
+    if (!transition.setNodeStates || Object.keys(transition.setNodeStates).length === 0) {
+      return nextResult;
+    }
+
+    const nextNodeStateFlags = buildNodeStateFlagUpdates(roomId, nodeStateUniverse, nodeStates, transition.setNodeStates);
+    nextResult.setFlags = {
+      ...(nextResult.setFlags ?? {}),
+      ...nextNodeStateFlags,
+    };
+    return nextResult;
+  }
+
+  return null;
+}
+
+function collectNodeStateUniverse(chart: RoomParallelStateChart): Record<string, Set<string>> {
+  const universe: Record<string, Set<string>> = {};
+  for (const [nodeId, stateId] of Object.entries(chart.initialStates)) {
+    (universe[nodeId] ??= new Set<string>()).add(stateId);
+  }
+  for (const transition of chart.transitions) {
+    for (const [nodeId, stateId] of Object.entries(transition.setNodeStates ?? {})) {
+      (universe[nodeId] ??= new Set<string>()).add(stateId);
+    }
+    for (const [nodeId, stateId] of Object.entries(transition.when?.nodeStatesAll ?? {})) {
+      (universe[nodeId] ??= new Set<string>()).add(stateId);
+    }
+  }
+  return universe;
+}
+
+function getActiveNodeStates(
+  chart: RoomParallelStateChart,
+  roomId: string,
+  flags: Record<string, boolean>,
+): Record<string, string> {
+  const universe = collectNodeStateUniverse(chart);
+  const active: Record<string, string> = { ...chart.initialStates };
+  for (const [nodeId, states] of Object.entries(universe)) {
+    for (const stateId of states) {
+      if (flags[nodeStateFlagName(roomId, nodeId, stateId)]) {
+        active[nodeId] = stateId;
+        break;
+      }
+    }
+  }
+  return active;
+}
+
+function parallelTransitionMatches(
+  transition: RoomParallelTransition,
+  hotspotId: string,
+  verb: Verb,
+  selectedItemId: string | null,
+  flags: Record<string, boolean>,
+  nodeStates: Record<string, string>,
+): boolean {
+  if (transition.hotspotId !== hotspotId || transition.verb !== verb) {
+    return false;
+  }
+  if (transition.requireNoInventoryItem && selectedItemId !== null) {
+    return false;
+  }
+  if (transition.inventoryItemId && transition.inventoryItemId !== selectedItemId) {
+    return false;
+  }
+  const when = transition.when;
+  if (!when) {
+    return true;
+  }
+  if (when.nodeStatesAll) {
+    for (const [nodeId, expectedState] of Object.entries(when.nodeStatesAll)) {
+      if (nodeStates[nodeId] !== expectedState) {
+        return false;
+      }
+    }
+  }
+  if (when.flagsAll && when.flagsAll.some((flag) => !flags[flag])) {
+    return false;
+  }
+  if (when.flagsNot && when.flagsNot.some((flag) => flags[flag])) {
+    return false;
+  }
+  if (when.flagsAny && when.flagsAny.length > 0 && !when.flagsAny.some((flag) => flags[flag])) {
+    return false;
+  }
+  return true;
+}
+
+function buildNodeStateFlagUpdates(
+  roomId: string,
+  universe: Record<string, Set<string>>,
+  currentNodeStates: Record<string, string>,
+  updateNodeStates: Record<string, string>,
+): Record<string, boolean> {
+  const nextNodeStates = { ...currentNodeStates, ...updateNodeStates };
+  const updates: Record<string, boolean> = {};
+  for (const [nodeId, states] of Object.entries(universe)) {
+    const activeState = nextNodeStates[nodeId];
+    for (const stateId of states) {
+      updates[nodeStateFlagName(roomId, nodeId, stateId)] = stateId === activeState;
+    }
+  }
+  return updates;
+}
+
+function nodeStateFlagName(roomId: string, nodeId: string, stateId: string): string {
+  return `chartNode:${roomId}:${nodeId}:${stateId}`;
+}
+
+function resolveInteractionChart(
+  chart: RoomInteractionChart | undefined,
+  roomId: string,
+  hotspotId: string,
+  verb: Verb | null,
+  selectedItemId: string | null,
+  flags: Record<string, boolean>,
+): ScriptResult | null {
+  if (!chart || !verb) {
+    return null;
+  }
+  const activeStateId = activeChartStateId(chart, roomId, flags);
+  const activeState = chart.states.find((state) => state.id === activeStateId);
+  if (!activeState) {
+    return null;
+  }
+
+  for (const transition of activeState.transitions) {
+    if (!transitionMatches(transition, hotspotId, verb, selectedItemId, flags)) {
+      continue;
+    }
+    const nextResult = cloneScriptResult(transition.result);
+    if (!transition.toState) {
+      return nextResult;
+    }
+
+    const nextFlags = {
+      ...(nextResult.setFlags ?? {}),
+      ...chartStateFlagUpdates(chart, roomId, transition.toState),
+    };
+    nextResult.setFlags = nextFlags;
+    return nextResult;
+  }
+  return null;
+}
+
+function activeChartStateId(
+  chart: RoomInteractionChart,
+  roomId: string,
+  flags: Record<string, boolean>,
+): string {
+  const explicitState = chart.states.find((state) => flags[chartStateFlagName(roomId, state.id)]);
+  return explicitState?.id ?? chart.initialState;
+}
+
+function transitionMatches(
+  transition: RoomInteractionTransition,
+  hotspotId: string,
+  verb: Verb,
+  selectedItemId: string | null,
+  flags: Record<string, boolean>,
+): boolean {
+  if (transition.hotspotId !== hotspotId || transition.verb !== verb) {
+    return false;
+  }
+  if (transition.requireNoInventoryItem && selectedItemId !== null) {
+    return false;
+  }
+  if (transition.inventoryItemId && transition.inventoryItemId !== selectedItemId) {
+    return false;
+  }
+  if (!chartConditionsMatch(transition, flags)) {
+    return false;
+  }
+  return true;
+}
+
+function chartConditionsMatch(transition: RoomInteractionTransition, flags: Record<string, boolean>): boolean {
+  const conditions = transition.conditions;
+  if (!conditions) {
+    return true;
+  }
+  if (conditions.flagsAll && conditions.flagsAll.some((flag) => !flags[flag])) {
+    return false;
+  }
+  if (conditions.flagsNot && conditions.flagsNot.some((flag) => flags[flag])) {
+    return false;
+  }
+  if (conditions.flagsAny && conditions.flagsAny.length > 0 && !conditions.flagsAny.some((flag) => flags[flag])) {
+    return false;
+  }
+  return true;
+}
+
+function chartStateFlagUpdates(
+  chart: RoomInteractionChart,
+  roomId: string,
+  toState: string,
+): Record<string, boolean> {
+  const updates: Record<string, boolean> = {};
+  for (const state of chart.states) {
+    updates[chartStateFlagName(roomId, state.id)] = state.id === toState;
+  }
+  return updates;
+}
+
+function chartStateFlagName(roomId: string, stateId: string): string {
+  return `chartState:${roomId}:${stateId}`;
 }
 
 function resolveScriptedRule(
@@ -503,6 +894,10 @@ function loadInteractionsConfig(raw: unknown): InteractionLinesConfig {
   };
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function stringArrayOrDefault(value: unknown, fallback: string[]): string[] {
   if (!Array.isArray(value)) {
     return [...fallback];
@@ -511,16 +906,50 @@ function stringArrayOrDefault(value: unknown, fallback: string[]): string[] {
   return next.length > 0 ? next : [...fallback];
 }
 
+function parseScriptResultFromUnknown(value: unknown): ScriptResult | null {
+  if (!isObject(value) || !Array.isArray(value.dialogueLines)) {
+    return null;
+  }
+  const dialogueLines = value.dialogueLines
+    .filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
+    .map((line) => line.trim());
+  if (dialogueLines.length === 0) {
+    return null;
+  }
+  const setFlags = isObject(value.setFlags)
+    ? Object.fromEntries(Object.entries(value.setFlags).filter(([, flagValue]) => typeof flagValue === 'boolean')) as Record<string, boolean>
+    : undefined;
+  const addInventoryItem = isObject(value.addInventoryItem)
+    && typeof value.addInventoryItem.id === 'string'
+    && typeof value.addInventoryItem.name === 'string'
+    ? { id: value.addInventoryItem.id, name: value.addInventoryItem.name }
+    : undefined;
+  return {
+    dialogueLines,
+    setFlags,
+    addInventoryItem,
+    removeInventoryItemId: typeof value.removeInventoryItemId === 'string' ? value.removeInventoryItemId : undefined,
+    roomChangeTo: typeof value.roomChangeTo === 'string' ? value.roomChangeTo : undefined,
+    clearSelectedInventory: value.clearSelectedInventory === true,
+  };
+}
+
+function toStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const next = value
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((entry) => entry.trim());
+  return next.length > 0 ? next : undefined;
+}
+
 function stringOrDefault(source: unknown, key: string, fallback: string): string {
   if (!isObject(source)) {
     return fallback;
   }
   const value = source[key];
   return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function stateDialogueLine(hotspot: Hotspot, verb: Verb, flags: Record<string, boolean>): string | null {

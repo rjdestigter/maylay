@@ -1,5 +1,3 @@
-import room1Json from './room1.json';
-import room2Json from './room2.json';
 import type {
   Hotspot,
   HotspotStateFlagMap,
@@ -7,19 +5,19 @@ import type {
   HotspotStateVariant,
   HotspotSpriteConfig,
   HotspotSpriteFlagVariant,
+  RoomParallelStateChart,
+  RoomParallelTransition,
+  RoomInteractionChart,
+  RoomInteractionChartState,
+  RoomInteractionTransition,
   Point,
   Rect,
   RoomScriptRule,
   RoomDefinition,
 } from '../types';
 
-export const room1: RoomDefinition = toRoomDefinition(room1Json);
-export const room2: RoomDefinition = toRoomDefinition(room2Json);
-
-export const rooms: Record<string, RoomDefinition> = {
-  room1,
-  room2,
-};
+export const rooms: Record<string, RoomDefinition> = loadRoomsFromJson();
+export const defaultRoomId: string = resolveDefaultRoomId(rooms);
 
 export function isHotspotVisible(roomId: string, hotspotId: string, flags: Record<string, boolean>): boolean {
   if (roomId !== 'room1') {
@@ -29,6 +27,36 @@ export function isHotspotVisible(roomId: string, hotspotId: string, flags: Recor
     return false;
   }
   return true;
+}
+
+function loadRoomsFromJson(): Record<string, RoomDefinition> {
+  const roomModules = import.meta.glob('./*.json', {
+    eager: true,
+    import: 'default',
+  }) as Record<string, unknown>;
+  const loadedRooms: Record<string, RoomDefinition> = {};
+
+  const sortedEntries = Object.entries(roomModules).sort(([leftPath], [rightPath]) => leftPath.localeCompare(rightPath));
+  for (const [modulePath, moduleValue] of sortedEntries) {
+    const room = toRoomDefinition(moduleValue);
+    if (loadedRooms[room.id]) {
+      throw new Error(`Duplicate room id "${room.id}" in ${modulePath}`);
+    }
+    loadedRooms[room.id] = room;
+  }
+
+  return loadedRooms;
+}
+
+function resolveDefaultRoomId(loadedRooms: Record<string, RoomDefinition>): string {
+  const roomIds = Object.keys(loadedRooms);
+  if (roomIds.length === 0) {
+    throw new Error('No room configuration files were loaded from src/game/rooms/*.json');
+  }
+  if (loadedRooms.room1) {
+    return 'room1';
+  }
+  return roomIds[0];
 }
 
 function toRoomDefinition(raw: unknown): RoomDefinition {
@@ -53,6 +81,9 @@ function toRoomDefinition(raw: unknown): RoomDefinition {
     backgroundColor: raw.backgroundColor,
     hotspots: raw.hotspots.map(toHotspot),
     scripts: Array.isArray(raw.scripts) ? raw.scripts.map(toRoomScriptRule) : undefined,
+    interactionChart: raw.interactionChart ? toRoomInteractionChart(raw.interactionChart) : undefined,
+    parallelStateChart: raw.parallelStateChart ? toRoomParallelStateChart(raw.parallelStateChart) : undefined,
+    xstateChart: isObject(raw.xstateChart) ? raw.xstateChart : undefined,
     walkablePolygon: Array.isArray(raw.walkablePolygon) ? raw.walkablePolygon.map(toPoint) : undefined,
     perspective: isObject(raw.perspective)
       ? {
@@ -66,6 +97,138 @@ function toRoomDefinition(raw: unknown): RoomDefinition {
   };
 }
 
+function toRoomParallelStateChart(raw: unknown): RoomParallelStateChart {
+  if (!isObject(raw) || !isObject(raw.initialStates) || !Array.isArray(raw.transitions)) {
+    throw new Error('Invalid room parallelStateChart: expected initialStates and transitions[]');
+  }
+  const initialStates: Record<string, string> = {};
+  for (const [nodeId, stateId] of Object.entries(raw.initialStates)) {
+    if (typeof nodeId !== 'string' || nodeId.trim().length === 0 || typeof stateId !== 'string' || stateId.trim().length === 0) {
+      throw new Error('Invalid room parallelStateChart.initialStates entry');
+    }
+    initialStates[nodeId.trim()] = stateId.trim();
+  }
+  return {
+    initialStates,
+    transitions: raw.transitions.map(toRoomParallelTransition),
+  };
+}
+
+function toRoomParallelTransition(raw: unknown): RoomParallelTransition {
+  if (!isObject(raw) || !isString(raw.hotspotId) || !isVerb(raw.verb)) {
+    throw new Error('Invalid room parallelStateChart transition: expected hotspotId and verb');
+  }
+  if (!isObject(raw.result) || !Array.isArray(raw.result.dialogueLines)) {
+    throw new Error(`Invalid room parallelStateChart transition (${raw.hotspotId}): result.dialogueLines must be an array`);
+  }
+  const dialogueLines = raw.result.dialogueLines
+    .filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
+    .map((line) => line.trim());
+
+  const whenNodeStatesAll = isObject(raw.when) && isObject(raw.when.nodeStatesAll)
+    ? toNodeStateRecord(raw.when.nodeStatesAll)
+    : undefined;
+
+  const setNodeStates = isObject(raw.setNodeStates) ? toNodeStateRecord(raw.setNodeStates) : undefined;
+
+  return {
+    hotspotId: raw.hotspotId,
+    verb: raw.verb,
+    inventoryItemId: toOptionalNonEmptyString(raw.inventoryItemId),
+    requireNoInventoryItem: raw.requireNoInventoryItem === true,
+    when: isObject(raw.when)
+      ? {
+          nodeStatesAll: whenNodeStatesAll,
+          flagsAll: toStringArray(raw.when.flagsAll),
+          flagsAny: toStringArray(raw.when.flagsAny),
+          flagsNot: toStringArray(raw.when.flagsNot),
+        }
+      : undefined,
+    setNodeStates,
+    result: {
+      dialogueLines,
+      setFlags: isObject(raw.result.setFlags) ? toBooleanRecord(raw.result.setFlags) : undefined,
+      addInventoryItem: isObject(raw.result.addInventoryItem)
+        ? toInventoryItem(raw.result.addInventoryItem)
+        : undefined,
+      removeInventoryItemId: toOptionalNonEmptyString(raw.result.removeInventoryItemId),
+      roomChangeTo: toOptionalNonEmptyString(raw.result.roomChangeTo),
+      clearSelectedInventory: raw.result.clearSelectedInventory === true,
+    },
+  };
+}
+
+function toNodeStateRecord(raw: Record<string, unknown>): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const [nodeId, stateId] of Object.entries(raw)) {
+    if (typeof nodeId !== 'string' || nodeId.trim().length === 0 || typeof stateId !== 'string' || stateId.trim().length === 0) {
+      continue;
+    }
+    next[nodeId.trim()] = stateId.trim();
+  }
+  return next;
+}
+
+function toRoomInteractionChart(raw: unknown): RoomInteractionChart {
+  if (!isObject(raw) || !isString(raw.initialState) || !Array.isArray(raw.states)) {
+    throw new Error('Invalid room interactionChart: expected initialState and states[]');
+  }
+  const states = raw.states.map(toRoomInteractionChartState);
+  if (!states.some((state) => state.id === raw.initialState)) {
+    throw new Error(`Invalid room interactionChart: missing initial state "${raw.initialState}"`);
+  }
+  return {
+    initialState: raw.initialState,
+    states,
+  };
+}
+
+function toRoomInteractionChartState(raw: unknown): RoomInteractionChartState {
+  if (!isObject(raw) || !isString(raw.id) || !Array.isArray(raw.transitions)) {
+    throw new Error('Invalid room interactionChart state: expected id and transitions[]');
+  }
+  return {
+    id: raw.id,
+    transitions: raw.transitions.map(toRoomInteractionTransition),
+  };
+}
+
+function toRoomInteractionTransition(raw: unknown): RoomInteractionTransition {
+  if (!isObject(raw) || !isString(raw.hotspotId) || !isVerb(raw.verb)) {
+    throw new Error('Invalid room interactionChart transition: expected hotspotId and verb');
+  }
+  if (!isObject(raw.result) || !Array.isArray(raw.result.dialogueLines)) {
+    throw new Error(`Invalid room interactionChart transition (${raw.hotspotId}): result.dialogueLines must be an array`);
+  }
+  const dialogueLines = raw.result.dialogueLines
+    .filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
+    .map((line) => line.trim());
+  return {
+    hotspotId: raw.hotspotId,
+    verb: raw.verb,
+    inventoryItemId: toOptionalNonEmptyString(raw.inventoryItemId),
+    requireNoInventoryItem: raw.requireNoInventoryItem === true,
+    conditions: isObject(raw.conditions)
+      ? {
+          flagsAll: toStringArray(raw.conditions.flagsAll),
+          flagsAny: toStringArray(raw.conditions.flagsAny),
+          flagsNot: toStringArray(raw.conditions.flagsNot),
+        }
+      : undefined,
+    toState: toOptionalNonEmptyString(raw.toState),
+    result: {
+      dialogueLines,
+      setFlags: isObject(raw.result.setFlags) ? toBooleanRecord(raw.result.setFlags) : undefined,
+      addInventoryItem: isObject(raw.result.addInventoryItem)
+        ? toInventoryItem(raw.result.addInventoryItem)
+        : undefined,
+      removeInventoryItemId: toOptionalNonEmptyString(raw.result.removeInventoryItemId),
+      roomChangeTo: toOptionalNonEmptyString(raw.result.roomChangeTo),
+      clearSelectedInventory: raw.result.clearSelectedInventory === true,
+    },
+  };
+}
+
 function toHotspot(raw: unknown): Hotspot {
   if (!isObject(raw) || !isString(raw.id) || !isString(raw.name)) {
     throw new Error('Invalid hotspot: expected id and name');
@@ -74,6 +237,9 @@ function toHotspot(raw: unknown): Hotspot {
     id: raw.id,
     name: raw.name,
     description: isString(raw.description) ? raw.description : undefined,
+    targetRoomId: toOptionalNonEmptyString(raw.targetRoomId),
+    targetRoomEntryPoint: raw.targetRoomEntryPoint ? toPoint(raw.targetRoomEntryPoint) : undefined,
+    walkPrompt: toOptionalNonEmptyString(raw.walkPrompt),
     bounds: toRect(raw.bounds, 'bounds'),
     spriteBounds: raw.spriteBounds ? toRect(raw.spriteBounds, 'spriteBounds') : undefined,
     sprite: raw.sprite ? toHotspotSpriteConfig(raw.sprite) : undefined,

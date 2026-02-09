@@ -139,158 +139,234 @@
       }
     }
   ],
-  "scripts": [
-    {
-      "hotspotId": "key",
-      "verb": "PICK_UP",
-      "conditions": {
-        "flagsNot": [
-          "keyTaken"
-        ]
+  "xstateChart": {
+    "id": "room1_interactions",
+    "type": "parallel",
+    "states": {
+      "key": {
+        "initial": "onGround",
+        "states": {
+          "onGround": {
+            "on": {
+              "PICK_UP": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "key"
+                    }
+                  },
+                  "target": "inInventory",
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "You pick up the brass key."
+                          ],
+                          "addInventoryItem": {
+                            "id": "key",
+                            "name": "Key"
+                          },
+                          "setFlags": {
+                            "keyTaken": true
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "inInventory": {}
+        }
       },
-      "result": {
-        "dialogueLines": [
-          "You pick up the brass key."
-        ],
-        "addInventoryItem": {
-          "id": "key",
-          "name": "Key"
-        },
-        "setFlags": {
-          "keyTaken": true,
-          "keyInspected": true
+      "door": {
+        "initial": "locked",
+        "states": {
+          "locked": {
+            "on": {
+              "LOOK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "door"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "The lock is old, stubborn, and very proud of it."
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "OPEN": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "door"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "Locked. Impressively, theatrically locked."
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "USE": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "door",
+                      "inventoryItemId": "key",
+                      "flagsAll": [
+                        "keyTaken"
+                      ]
+                    }
+                  },
+                  "target": "open",
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "The key turns with a click. The door swings open."
+                          ],
+                          "setFlags": {
+                            "doorOpen": true,
+                            "doorLocked": false
+                          },
+                          "clearSelectedInventory": true
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "door",
+                      "inventoryItemId": "key",
+                      "flagsNot": [
+                        "keyTaken"
+                      ]
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "You need to pick up the key first."
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "open": {
+            "on": {
+              "LOOK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "door"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "The door is open, as if inviting trouble."
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "OPEN": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "door"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "You step through the open door."
+                          ],
+                          "roomChangeTo": "room2"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "USE": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "door",
+                      "requireNoInventoryItem": true
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "You step through the open door."
+                          ],
+                          "roomChangeTo": "room2"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
         }
       }
-    },
-    {
-      "hotspotId": "key",
-      "verb": "PICK_UP",
-      "conditions": {
-        "flagsAll": [
-          "keyTaken"
-        ]
-      },
-      "result": {
-        "dialogueLines": [
-          "You already picked up the key."
-        ]
-      }
-    },
-    {
-      "hotspotId": "door",
-      "verb": "USE",
-      "requireNoInventoryItem": true,
-      "conditions": {
-        "flagsAll": [
-          "doorOpen"
-        ]
-      },
-      "result": {
-        "dialogueLines": [
-          "You step through the open door."
-        ],
-        "roomChangeTo": "room2"
-      }
-    },
-    {
-      "hotspotId": "door",
-      "verb": "USE",
-      "requireNoInventoryItem": true,
-      "conditions": {
-        "flagsNot": [
-          "doorOpen"
-        ]
-      },
-      "result": {
-        "dialogueLines": [
-          "Use what on the door? Your optimism jiggles the handle, but not the lock."
-        ]
-      }
-    },
-    {
-      "hotspotId": "door",
-      "verb": "USE",
-      "inventoryItemId": "key",
-      "conditions": {
-        "flagsNot": [
-          "keyTaken"
-        ]
-      },
-      "result": {
-        "dialogueLines": [
-          "You need to pick up the key first."
-        ]
-      }
-    },
-    {
-      "hotspotId": "door",
-      "verb": "USE",
-      "inventoryItemId": "key",
-      "conditions": {
-        "flagsAll": [
-          "doorOpen"
-        ]
-      },
-      "result": {
-        "dialogueLines": [
-          "The door is already unlocked."
-        ]
-      }
-    },
-    {
-      "hotspotId": "door",
-      "verb": "USE",
-      "inventoryItemId": "key",
-      "conditions": {
-        "flagsAll": [
-          "keyTaken"
-        ],
-        "flagsNot": [
-          "doorOpen"
-        ]
-      },
-      "result": {
-        "dialogueLines": [
-          "The key turns with a click. The door swings open."
-        ],
-        "setFlags": {
-          "doorOpen": true,
-          "doorLocked": false,
-          "doorInspected": true
-        },
-        "clearSelectedInventory": true
-      }
-    },
-    {
-      "hotspotId": "door",
-      "verb": "OPEN",
-      "conditions": {
-        "flagsAll": [
-          "doorOpen"
-        ]
-      },
-      "result": {
-        "dialogueLines": [
-          "You step through the open door."
-        ],
-        "roomChangeTo": "room2"
-      }
-    },
-    {
-      "hotspotId": "door",
-      "verb": "OPEN",
-      "conditions": {
-        "flagsNot": [
-          "doorOpen"
-        ]
-      },
-      "result": {
-        "dialogueLines": [
-          "Locked. Impressively, theatrically locked."
-        ]
-      }
     }
-  ],
+  },
   "walkablePolygon": [
     {
       "x": 71,

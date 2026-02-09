@@ -16,6 +16,9 @@ export interface Hotspot {
   id: string;
   name: string;
   description?: string;
+  targetRoomId?: string;
+  targetRoomEntryPoint?: Point;
+  walkPrompt?: string;
   bounds: Rect;
   spriteBounds?: Rect;
   sprite?: HotspotSpriteConfig;
@@ -62,6 +65,9 @@ export interface RoomDefinition {
   backgroundColor: string;
   hotspots: Hotspot[];
   scripts?: RoomScriptRule[];
+  interactionChart?: RoomInteractionChart;
+  parallelStateChart?: RoomParallelStateChart;
+  xstateChart?: RoomXStateChartDefinition;
   walkablePolygon?: Point[];
   perspective?: {
     farY: number;
@@ -105,6 +111,52 @@ export interface RoomScriptRule {
   };
   result: ScriptResult;
 }
+
+export interface RoomInteractionChart {
+  initialState: string;
+  states: RoomInteractionChartState[];
+}
+
+export interface RoomInteractionChartState {
+  id: string;
+  transitions: RoomInteractionTransition[];
+}
+
+export interface RoomInteractionTransition {
+  hotspotId: string;
+  verb: Verb;
+  inventoryItemId?: string;
+  requireNoInventoryItem?: boolean;
+  conditions?: {
+    flagsAll?: string[];
+    flagsAny?: string[];
+    flagsNot?: string[];
+  };
+  toState?: string;
+  result: ScriptResult;
+}
+
+export interface RoomParallelStateChart {
+  initialStates: Record<string, string>;
+  transitions: RoomParallelTransition[];
+}
+
+export interface RoomParallelTransition {
+  hotspotId: string;
+  verb: Verb;
+  inventoryItemId?: string;
+  requireNoInventoryItem?: boolean;
+  when?: {
+    nodeStatesAll?: Record<string, string>;
+    flagsAll?: string[];
+    flagsAny?: string[];
+    flagsNot?: string[];
+  };
+  setNodeStates?: Record<string, string>;
+  result: ScriptResult;
+}
+
+export type RoomXStateChartDefinition = Record<string, unknown>;
 
 
 
