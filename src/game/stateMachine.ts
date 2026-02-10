@@ -235,6 +235,9 @@ export const gameMachine = setup({
       on: {
         ARRIVED: 'interacting',
         HOTSPOT_HOVERED: { actions: 'setHovered' },
+        HOTSPOT_CLICKED: { actions: 'setPendingInteraction' },
+        VERB_SELECTED: { actions: 'setVerb' },
+        INVENTORY_SELECTED: { actions: 'setInventorySelection' },
       },
     },
     interacting: {
@@ -266,6 +269,12 @@ export const gameMachine = setup({
         ],
       },
       on: {
+        HOTSPOT_CLICKED: {
+          target: 'walkingToTarget',
+          actions: ['clearDialogue', 'setPendingInteraction'],
+        },
+        VERB_SELECTED: { actions: 'setVerb' },
+        INVENTORY_SELECTED: { actions: 'setInventorySelection' },
         DIALOGUE_ADVANCE: [
           {
             guard: 'hasMoreDialogue',
