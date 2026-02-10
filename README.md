@@ -66,7 +66,7 @@ git push -u origin main
         |-- types.ts
         `-- rooms
             |-- room1.json
-            |-- room1.ts
+            |-- rooms.ts
             `-- room2.json
 ```
 
@@ -84,13 +84,49 @@ git push -u origin main
   - Context includes:
     - `currentRoomId`, `selectedVerb`, `selectedInventoryItemId`, `flags`, `inventory`, `pendingInteraction`
 - Game logic scripts: `src/game/scripts.ts`
-  - Resolves LOOK / TALK / PICK_UP / USE on hotspots.
-  - First evaluates room JSON `scripts` rules (data-driven DSL), then falls back to defaults.
+  - Resolves LOOK / TALK / PICK_UP / USE / OPEN on hotspots.
+  - Evaluates room JSON `xstateChart` first, then legacy JSON `scripts`, then defaults.
 - Room content: `src/game/rooms/*.json`
-  - JSON defines rooms/hotspots/walkable polygons/perspective/scripts.
-  - `src/game/rooms/room1.ts` loads and validates JSON into typed `RoomDefinition`.
+  - JSON defines rooms/hotspots/walkable polygons/perspective/scripts/statecharts.
+  - `src/game/rooms/rooms.ts` auto-loads and validates all room JSON files.
 - Dialogue fallback content: `src/game/dialogue/fallbacks.json`
   - Witty default lines are data-driven and loaded by `src/game/scripts.ts`.
+
+## Statechart Diagrams
+
+### Global Game Flow (`src/game/stateMachine.ts`)
+
+```mermaid
+stateDiagram-v2
+  [*] --> boot
+  boot --> roomLoading: BOOTED
+  roomLoading --> exploring
+  exploring --> walkingToTarget: HOTSPOT_CLICKED
+  walkingToTarget --> interacting: ARRIVED
+  interacting --> dialogue: SCRIPT_RESOLVED (hasDialogue)
+  interacting --> exploring: SCRIPT_RESOLVED (no dialogue)
+  dialogue --> dialogue: auto advance / DIALOGUE_ADVANCE (hasMoreDialogue)
+  dialogue --> exploring: end dialogue
+```
+
+### Room 1 Interaction Chart (`src/game/rooms/room1.json` -> `xstateChart`)
+
+```mermaid
+stateDiagram-v2
+  state room1_interactions {
+    state "key (parallel region)" as key_region {
+      [*] --> key_onGround
+      key_onGround --> key_inInventory: PICK_UP key / add key item
+    }
+
+    state "door (parallel region)" as door_region {
+      [*] --> door_locked
+      door_locked --> door_open: USE door with key [in key.inInventory]
+      door_open --> door_open: OPEN door / change room2
+      door_open --> door_open: USE door (no item) / change room2
+    }
+  }
+```
 
 ## Sample Gameplay Slice
 
@@ -103,7 +139,7 @@ git push -u origin main
 ## How to Add a New Room
 
 1. Add a room JSON file in `src/game/rooms/` (copy `room2.json` as a starter).
-2. Load/register it in `src/game/rooms/room1.ts` via `toRoomDefinition(...)` and `rooms`.
+2. No manual registration needed; `src/game/rooms/rooms.ts` auto-loads all `*.json`.
 3. Add a spawn point in `spawnPointForRoom` in `src/main.ts`.
 4. Return `roomChangeTo: 'yourRoomId'` from `resolveInteraction` when appropriate.
 
