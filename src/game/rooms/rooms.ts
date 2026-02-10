@@ -1,4 +1,5 @@
 import type {
+  DialogueOption,
   Hotspot,
   HotspotStateFlagMap,
   HotspotStatesConfig,
@@ -24,6 +25,9 @@ export function isHotspotVisible(roomId: string, hotspotId: string, flags: Recor
     return true;
   }
   if (hotspotId === 'key' && flags.keyTaken) {
+    return false;
+  }
+  if (hotspotId === 'moonblossom' && flags.moonblossomTaken) {
     return false;
   }
   return true;
@@ -154,6 +158,7 @@ function toRoomParallelTransition(raw: unknown): RoomParallelTransition {
       removeInventoryItemId: toOptionalNonEmptyString(raw.result.removeInventoryItemId),
       roomChangeTo: toOptionalNonEmptyString(raw.result.roomChangeTo),
       clearSelectedInventory: raw.result.clearSelectedInventory === true,
+      dialogueOptions: toDialogueOptions(raw.result.dialogueOptions),
     },
   };
 }
@@ -225,6 +230,7 @@ function toRoomInteractionTransition(raw: unknown): RoomInteractionTransition {
       removeInventoryItemId: toOptionalNonEmptyString(raw.result.removeInventoryItemId),
       roomChangeTo: toOptionalNonEmptyString(raw.result.roomChangeTo),
       clearSelectedInventory: raw.result.clearSelectedInventory === true,
+      dialogueOptions: toDialogueOptions(raw.result.dialogueOptions),
     },
   };
 }
@@ -371,6 +377,7 @@ function toRoomScriptRule(raw: unknown): RoomScriptRule {
       removeInventoryItemId: toOptionalNonEmptyString(raw.result.removeInventoryItemId),
       roomChangeTo: toOptionalNonEmptyString(raw.result.roomChangeTo),
       clearSelectedInventory: raw.result.clearSelectedInventory === true,
+      dialogueOptions: toDialogueOptions(raw.result.dialogueOptions),
     },
   };
 }
@@ -447,4 +454,56 @@ function toOptionalNonEmptyString(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function toDialogueOptions(value: unknown, depth: number = 0): DialogueOption[] | undefined {
+  if (depth > 3 || !Array.isArray(value)) {
+    return undefined;
+  }
+  const options: DialogueOption[] = [];
+  for (const entry of value) {
+    if (!isObject(entry) || !isString(entry.id) || !isString(entry.text) || !isObject(entry.result)) {
+      continue;
+    }
+    const id = entry.id.trim();
+    const text = entry.text.trim();
+    if (!id || !text) {
+      continue;
+    }
+    const result = toScriptResult(entry.result, depth + 1);
+    if (!result) {
+      continue;
+    }
+    options.push({ id, text, result });
+  }
+  return options.length > 0 ? options : undefined;
+}
+
+function toScriptResult(raw: unknown, depth: number = 0): {
+  dialogueLines: string[];
+  setFlags?: Record<string, boolean>;
+  addInventoryItem?: { id: string; name: string };
+  removeInventoryItemId?: string;
+  roomChangeTo?: string;
+  clearSelectedInventory?: boolean;
+  dialogueOptions?: DialogueOption[];
+} | null {
+  if (depth > 3 || !isObject(raw) || !Array.isArray(raw.dialogueLines)) {
+    return null;
+  }
+  const dialogueLines = raw.dialogueLines
+    .filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
+    .map((line) => line.trim());
+  if (dialogueLines.length === 0) {
+    return null;
+  }
+  return {
+    dialogueLines,
+    setFlags: isObject(raw.setFlags) ? toBooleanRecord(raw.setFlags) : undefined,
+    addInventoryItem: isObject(raw.addInventoryItem) ? toInventoryItem(raw.addInventoryItem) : undefined,
+    removeInventoryItemId: toOptionalNonEmptyString(raw.removeInventoryItemId),
+    roomChangeTo: toOptionalNonEmptyString(raw.roomChangeTo),
+    clearSelectedInventory: raw.clearSelectedInventory === true,
+    dialogueOptions: toDialogueOptions(raw.dialogueOptions, depth + 1),
+  };
 }

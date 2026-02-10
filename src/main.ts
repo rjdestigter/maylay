@@ -147,6 +147,7 @@ async function bootstrap(): Promise<void> {
   const inventoryBar = getRequiredElement<HTMLDivElement>('inventory-bar');
   const dialoguePanel = getRequiredElement<HTMLDivElement>('dialogue-panel');
   const dialogueText = getRequiredElement<HTMLParagraphElement>('dialogue-text');
+  const dialogueOptions = getRequiredElement<HTMLDivElement>('dialogue-options');
   const audioUnlock = getRequiredElement<HTMLButtonElement>('audio-unlock');
   const musicToggle = getRequiredElement<HTMLButtonElement>('music-toggle');
   const sfxToggle = getRequiredElement<HTMLButtonElement>('sfx-toggle');
@@ -641,9 +642,26 @@ async function bootstrap(): Promise<void> {
     actor.send({ type: 'INVENTORY_SELECTED', itemId });
   });
 
-  dialoguePanel.addEventListener('click', () => {
+  dialoguePanel.addEventListener('click', (event) => {
     const snapshot = actor.getSnapshot();
     if (!snapshot.matches('dialogue')) {
+      return;
+    }
+
+    const target = event.target;
+    if (target instanceof Element) {
+      const optionButton = target.closest<HTMLButtonElement>('button[data-dialogue-option-id]');
+      if (optionButton) {
+        const optionId = optionButton.dataset.dialogueOptionId;
+        if (optionId) {
+          voicePlayer.cancel();
+          actor.send({ type: 'DIALOGUE_OPTION_SELECTED', optionId });
+          return;
+        }
+      }
+    }
+
+    if (snapshot.context.dialogueOptions.length > 0) {
       return;
     }
 
@@ -1145,6 +1163,9 @@ async function bootstrap(): Promise<void> {
     dialoguePanel.classList.toggle('hidden', !inDialogue);
     if (inDialogue) {
       dialogueText.textContent = context.dialogueLines[context.dialogueIndex] ?? '';
+      dialogueOptions.innerHTML = renderDialogueOptions(context);
+    } else {
+      dialogueOptions.innerHTML = '';
     }
 
     const sentence = buildSentenceLine(context, context.hoveredHotspotId, hoveredWalkableArea);
@@ -1753,8 +1774,19 @@ async function bootstrap(): Promise<void> {
 
     const text = JSON.stringify(
       {
+        id: room.id,
+        name: room.name,
+        width: room.width,
+        height: room.height,
+        backgroundColor: room.backgroundColor,
         walkablePolygon: room.walkablePolygon ?? [],
         hotspots: room.hotspots,
+        scripts: room.scripts ?? [],
+        interactionChart: room.interactionChart,
+        parallelStateChart: room.parallelStateChart,
+        xstateChart: room.xstateChart,
+        perspective: room.perspective,
+        overlayText: room.overlayText,
       },
       null,
       2,
@@ -1891,6 +1923,15 @@ async function bootstrap(): Promise<void> {
     backgroundSfx.pause();
     voicePlayer.cancel();
   });
+}
+
+function renderDialogueOptions(context: GameContext): string {
+  if (context.dialogueOptions.length === 0) {
+    return '';
+  }
+  return context.dialogueOptions
+    .map((option) => `<button class="dialogue-option" type="button" data-dialogue-option-id="${escapeHtml(option.id)}">${escapeHtml(option.text)}</button>`)
+    .join('');
 }
 
 
@@ -2461,6 +2502,17 @@ function withArticle(name: string): string {
 function inventoryIconHtml(itemId: string, assets: AssetStore): string {
   if (itemId === 'key') {
     return `<img class="inventory-icon" src="${assets.getImageUrl('inventoryKey')}" alt="">`;
+  }
+  if (itemId === 'moonblossom') {
+    const moonblossomSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+      <rect width="48" height="48" fill="none"/>
+      <g stroke="#2a1a3b" stroke-width="1.5" stroke-linejoin="round">
+        <path d="M24 8 L27 16 L35 14 L29 20 L36 25 L28 26 L30 34 L24 29 L18 34 L20 26 L12 25 L19 20 L13 14 L21 16 Z" fill="#9dc6ff"/>
+        <circle cx="24" cy="24" r="4" fill="#f5dd8a"/>
+      </g>
+    </svg>`;
+    const encoded = encodeURIComponent(moonblossomSvg);
+    return `<img class="inventory-icon" src="data:image/svg+xml,${encoded}" alt="">`;
   }
 
   return '';

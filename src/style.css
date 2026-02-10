@@ -479,6 +479,26 @@ button.active {
   font-size: clamp(10px, 1.9vw, 16px);
 }
 
+#dialogue-options {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.dialogue-option {
+  text-align: left;
+  border: 1px solid #2b2012;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #5c4528 0%, #3d2c19 100%);
+  color: #f5ead4;
+  font: 12px/1.25 "Palatino Linotype", "Book Antiqua", serif;
+  padding: 7px 9px;
+}
+
+.dialogue-option:hover {
+  background: linear-gradient(180deg, #735430 0%, #4c351d 100%);
+}
+
 .hint {
   display: inline-block;
   margin-top: 6px;

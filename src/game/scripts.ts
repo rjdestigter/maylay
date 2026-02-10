@@ -3,6 +3,7 @@ import interactionsJson from './dialogue/interactions.json';
 import { assign, createActor, setup } from 'xstate';
 import type { GameContext } from './stateMachine';
 import type {
+  DialogueOption,
   Hotspot,
   RoomDefinition,
   RoomInteractionChart,
@@ -695,6 +696,15 @@ function cloneScriptResult(result: ScriptResult): ScriptResult {
     removeInventoryItemId: result.removeInventoryItemId,
     roomChangeTo: result.roomChangeTo,
     clearSelectedInventory: result.clearSelectedInventory,
+    dialogueOptions: result.dialogueOptions?.map(cloneDialogueOption),
+  };
+}
+
+function cloneDialogueOption(option: DialogueOption): DialogueOption {
+  return {
+    id: option.id,
+    text: option.text,
+    result: cloneScriptResult(option.result),
   };
 }
 
@@ -906,7 +916,10 @@ function stringArrayOrDefault(value: unknown, fallback: string[]): string[] {
   return next.length > 0 ? next : [...fallback];
 }
 
-function parseScriptResultFromUnknown(value: unknown): ScriptResult | null {
+function parseScriptResultFromUnknown(value: unknown, depth: number = 0): ScriptResult | null {
+  if (depth > 3) {
+    return null;
+  }
   if (!isObject(value) || !Array.isArray(value.dialogueLines)) {
     return null;
   }
@@ -924,6 +937,11 @@ function parseScriptResultFromUnknown(value: unknown): ScriptResult | null {
     && typeof value.addInventoryItem.name === 'string'
     ? { id: value.addInventoryItem.id, name: value.addInventoryItem.name }
     : undefined;
+  const dialogueOptions = Array.isArray(value.dialogueOptions)
+    ? value.dialogueOptions
+      .map((entry) => parseDialogueOptionFromUnknown(entry, depth + 1))
+      .filter((entry): entry is DialogueOption => entry !== null)
+    : undefined;
   return {
     dialogueLines,
     setFlags,
@@ -931,7 +949,24 @@ function parseScriptResultFromUnknown(value: unknown): ScriptResult | null {
     removeInventoryItemId: typeof value.removeInventoryItemId === 'string' ? value.removeInventoryItemId : undefined,
     roomChangeTo: typeof value.roomChangeTo === 'string' ? value.roomChangeTo : undefined,
     clearSelectedInventory: value.clearSelectedInventory === true,
+    dialogueOptions: dialogueOptions && dialogueOptions.length > 0 ? dialogueOptions : undefined,
   };
+}
+
+function parseDialogueOptionFromUnknown(value: unknown, depth: number): DialogueOption | null {
+  if (!isObject(value) || typeof value.id !== 'string' || typeof value.text !== 'string') {
+    return null;
+  }
+  const id = value.id.trim();
+  const text = value.text.trim();
+  if (!id || !text) {
+    return null;
+  }
+  const result = parseScriptResultFromUnknown(value.result, depth);
+  if (!result) {
+    return null;
+  }
+  return { id, text, result };
 }
 
 function toStringArray(value: unknown): string[] | undefined {

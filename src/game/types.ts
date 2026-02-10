@@ -97,6 +97,13 @@ export interface ScriptResult {
   removeInventoryItemId?: string;
   roomChangeTo?: string;
   clearSelectedInventory?: boolean;
+  dialogueOptions?: DialogueOption[];
+}
+
+export interface DialogueOption {
+  id: string;
+  text: string;
+  result: ScriptResult;
 }
 
 export interface RoomScriptRule {

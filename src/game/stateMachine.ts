@@ -1,5 +1,5 @@
 ﻿import { assign, setup } from 'xstate';
-import type { PendingInteraction, ScriptResult, Verb, InventoryItem, Point } from './types';
+import type { PendingInteraction, ScriptResult, Verb, InventoryItem, Point, DialogueOption } from './types';
 
 const DIALOGUE_AUTO_ADVANCE_MIN_MS = 1800;
 const DIALOGUE_AUTO_ADVANCE_MAX_MS = 6000;
@@ -14,6 +14,7 @@ export interface GameContext {
   hoveredHotspotId: string | null;
   dialogueLines: string[];
   dialogueIndex: number;
+  dialogueOptions: DialogueOption[];
 }
 
 export type GameEvent =
@@ -23,6 +24,7 @@ export type GameEvent =
   | { type: 'HOTSPOT_CLICKED'; hotspotId: string; walkTarget: Point }
   | { type: 'INVENTORY_SELECTED'; itemId: string | null }
   | { type: 'DIALOGUE_ADVANCE' }
+  | { type: 'DIALOGUE_OPTION_SELECTED'; optionId: string }
   | { type: 'ARRIVED' }
   | { type: 'SCRIPT_RESOLVED'; result: ScriptResult };
 
@@ -41,6 +43,7 @@ const initialContext: GameContext = {
   hoveredHotspotId: null,
   dialogueLines: [],
   dialogueIndex: 0,
+  dialogueOptions: [],
 };
 
 export const gameMachine = setup({
@@ -50,7 +53,12 @@ export const gameMachine = setup({
   },
   guards: {
     hasDialogue: ({ event }) => event.type === 'SCRIPT_RESOLVED' && event.result.dialogueLines.length > 0,
+    hasDialogueOptions: ({ context }) => context.dialogueOptions.length > 0,
     hasMoreDialogue: ({ context }) => context.dialogueIndex < context.dialogueLines.length - 1,
+    shouldAutoAdvanceDialogue: ({ context }) =>
+      context.dialogueOptions.length === 0 && context.dialogueIndex < context.dialogueLines.length - 1,
+    shouldCloseDialogue: ({ context }) =>
+      context.dialogueOptions.length === 0 && context.dialogueIndex >= context.dialogueLines.length - 1,
     shouldInspectInventory: ({ context, event }) =>
       event.type === 'INVENTORY_SELECTED' && event.itemId !== null && context.selectedVerb === 'LOOK',
     shouldShowInventoryVerbFeedback: ({ context, event }) =>
@@ -114,6 +122,7 @@ export const gameMachine = setup({
         selectedInventoryItemId: null,
         dialogueLines: [inventoryLookLine(item.id, item.name)],
         dialogueIndex: 0,
+        dialogueOptions: [],
       };
     }),
     showInventoryVerbFeedback: assign(({ context, event }) => {
@@ -128,6 +137,7 @@ export const gameMachine = setup({
         selectedInventoryItemId: null,
         dialogueLines: [inventoryVerbFeedbackLine(context.selectedVerb, itemName)],
         dialogueIndex: 0,
+        dialogueOptions: [],
       };
     }),
     setPendingInteraction: assign(({ context, event }) => {
@@ -180,7 +190,46 @@ export const gameMachine = setup({
         currentRoomId: event.result.roomChangeTo ?? context.currentRoomId,
         dialogueLines: event.result.dialogueLines,
         dialogueIndex: 0,
+        dialogueOptions: event.result.dialogueOptions ?? [],
         pendingInteraction: null,
+      };
+    }),
+    applyDialogueOption: assign(({ context, event }) => {
+      if (event.type !== 'DIALOGUE_OPTION_SELECTED') {
+        return context;
+      }
+      const selected = context.dialogueOptions.find((option) => option.id === event.optionId);
+      if (!selected) {
+        return context;
+      }
+
+      const result = selected.result;
+      const nextFlags = {
+        ...context.flags,
+        ...(result.setFlags ?? {}),
+      };
+
+      let nextInventory = context.inventory;
+      if (result.addInventoryItem) {
+        const exists = context.inventory.some((item) => item.id === result.addInventoryItem?.id);
+        if (!exists) {
+          nextInventory = [...context.inventory, result.addInventoryItem];
+        }
+      }
+      if (result.removeInventoryItemId) {
+        nextInventory = nextInventory.filter((item) => item.id !== result.removeInventoryItemId);
+      }
+
+      return {
+        ...context,
+        flags: nextFlags,
+        inventory: nextInventory,
+        selectedVerb: null,
+        selectedInventoryItemId: result.clearSelectedInventory ? null : context.selectedInventoryItemId,
+        currentRoomId: result.roomChangeTo ?? context.currentRoomId,
+        dialogueLines: result.dialogueLines,
+        dialogueIndex: 0,
+        dialogueOptions: result.dialogueOptions ?? [],
       };
     }),
     advanceDialogue: assign(({ context }) => ({
@@ -191,6 +240,7 @@ export const gameMachine = setup({
       ...context,
       dialogueLines: [],
       dialogueIndex: 0,
+      dialogueOptions: [],
     })),
   },
 }).createMachine({
@@ -259,10 +309,11 @@ export const gameMachine = setup({
       after: {
         dialogueAutoAdvance: [
           {
-            guard: 'hasMoreDialogue',
+            guard: 'shouldAutoAdvanceDialogue',
             actions: 'advanceDialogue',
           },
           {
+            guard: 'shouldCloseDialogue',
             target: 'exploring',
             actions: 'clearDialogue',
           },
@@ -275,12 +326,29 @@ export const gameMachine = setup({
         },
         VERB_SELECTED: { actions: 'setVerb' },
         INVENTORY_SELECTED: { actions: 'setInventorySelection' },
+        DIALOGUE_OPTION_SELECTED: [
+          {
+            actions: 'applyDialogueOption',
+            target: 'dialogue',
+            guard: ({ context, event }) =>
+              event.type === 'DIALOGUE_OPTION_SELECTED'
+              && context.dialogueOptions.some((option) => option.id === event.optionId)
+              && (
+                context.dialogueOptions.find((option) => option.id === event.optionId)?.result.dialogueLines.length ?? 0
+              ) > 0,
+          },
+          {
+            actions: ['applyDialogueOption', 'clearDialogue'],
+            target: 'exploring',
+          },
+        ],
         DIALOGUE_ADVANCE: [
           {
-            guard: 'hasMoreDialogue',
+            guard: 'shouldAutoAdvanceDialogue',
             actions: 'advanceDialogue',
           },
           {
+            guard: 'shouldCloseDialogue',
             target: 'exploring',
             actions: 'clearDialogue',
           },

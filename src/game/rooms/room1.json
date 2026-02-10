@@ -102,26 +102,51 @@
       }
     },
     {
-      "id": "key",
-      "name": "key",
+      "id": "hermit",
+      "name": "Forest hermit",
+      "description": "A weathered hermit watches the crossroads with theatrical suspicion.",
       "bounds": {
-        "x": 201,
-        "y": 163,
-        "w": 22,
-        "h": 15
+        "x": 120,
+        "y": 53,
+        "w": 36,
+        "h": 47
       },
       "spriteBounds": {
-        "x": 200,
-        "y": 158,
-        "w": 24,
-        "h": 30
+        "x": 123,
+        "y": 56,
+        "w": 28,
+        "h": 41
       },
       "sprite": {
-        "defaultImageId": "key"
+        "defaultImageId": "hermitPlaceholder"
       },
       "walkTarget": {
-        "x": 198,
-        "y": 172
+        "x": 140,
+        "y": 99
+      }
+    },
+    {
+      "id": "moonblossom",
+      "name": "Moonblossom",
+      "description": "Silver-blue petals. Rare, fragrant, and probably plot-relevant.",
+      "bounds": {
+        "x": 257,
+        "y": 132,
+        "w": 24,
+        "h": 18
+      },
+      "spriteBounds": {
+        "x": 257,
+        "y": 130,
+        "w": 21,
+        "h": 20
+      },
+      "sprite": {
+        "defaultImageId": "moonblossomPlaceholder"
+      },
+      "walkTarget": {
+        "x": 250,
+        "y": 144
       }
     },
     {
@@ -143,46 +168,6 @@
     "id": "room1_interactions",
     "type": "parallel",
     "states": {
-      "key": {
-        "initial": "onGround",
-        "states": {
-          "onGround": {
-            "on": {
-              "PICK_UP": [
-                {
-                  "guard": {
-                    "type": "matchInteraction",
-                    "params": {
-                      "hotspotId": "key"
-                    }
-                  },
-                  "target": "inInventory",
-                  "actions": [
-                    {
-                      "type": "emitResult",
-                      "params": {
-                        "result": {
-                          "dialogueLines": [
-                            "You pick up the brass key."
-                          ],
-                          "addInventoryItem": {
-                            "id": "key",
-                            "name": "Key"
-                          },
-                          "setFlags": {
-                            "keyTaken": true
-                          }
-                        }
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          "inInventory": {}
-        }
-      },
       "door": {
         "initial": "locked",
         "states": {
@@ -234,12 +219,14 @@
               ],
               "USE": [
                 {
-                  "in": "#room1_interactions.key.inInventory",
                   "guard": {
                     "type": "matchInteraction",
                     "params": {
                       "hotspotId": "door",
-                      "inventoryItemId": "key"
+                      "inventoryItemId": "key",
+                      "flagsAll": [
+                        "keyTaken"
+                      ]
                     }
                   },
                   "target": "open",
@@ -256,28 +243,6 @@
                             "doorLocked": false
                           },
                           "clearSelectedInventory": true
-                        }
-                      }
-                    }
-                  ]
-                },
-                {
-                  "in": "#room1_interactions.key.onGround",
-                  "guard": {
-                    "type": "matchInteraction",
-                    "params": {
-                      "hotspotId": "door",
-                      "inventoryItemId": "key"
-                    }
-                  },
-                  "actions": [
-                    {
-                      "type": "emitResult",
-                      "params": {
-                        "result": {
-                          "dialogueLines": [
-                            "You need to pick up the key first."
-                          ]
                         }
                       }
                     }
@@ -351,6 +316,301 @@
                             "You step through the open door."
                           ],
                           "roomChangeTo": "room2"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      "moonblossom": {
+        "initial": "onPatch",
+        "states": {
+          "onPatch": {
+            "on": {
+              "LOOK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "moonblossom"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "A moonblossom. It smells like rain and bad decisions."
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "PICK_UP": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "moonblossom"
+                    }
+                  },
+                  "target": "picked",
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "You carefully pick the moonblossom."
+                          ],
+                          "addInventoryItem": {
+                            "id": "moonblossom",
+                            "name": "Moonblossom"
+                          },
+                          "setFlags": {
+                            "moonblossomTaken": true
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "picked": {}
+        }
+      },
+      "hermit": {
+        "initial": "wary",
+        "states": {
+          "wary": {
+            "on": {
+              "LOOK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "hermit"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "The hermit looks like he has survived several wars and at least one bad haircut."
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "TALK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "hermit"
+                    }
+                  },
+                  "target": "requestingMoonblossom",
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "Hermit: 'If you seek the castle road, earn it.'",
+                            "Hermit: 'Bring me a moonblossom from the purple patch to the east.'"
+                          ],
+                          "dialogueOptions": [
+                            {
+                              "id": "hermit_castle",
+                              "text": "Ask about the castle road",
+                              "result": {
+                                "dialogueLines": [
+                                  "You: 'Why all this trouble for one road?'",
+                                  "Hermit: 'Because roads remember who walks them. The castle road is picky.'"
+                                ]
+                              }
+                            },
+                            {
+                              "id": "hermit_hat",
+                              "text": "Compliment his hat",
+                              "result": {
+                                "dialogueLines": [
+                                  "You: 'Nice hat.'",
+                                  "Hermit: 'Finally, a scholar. Still need that moonblossom though.'"
+                                ],
+                                "dialogueOptions": [
+                                  {
+                                    "id": "hermit_hat_castle",
+                                    "text": "Ask about the castle road",
+                                    "result": {
+                                      "dialogueLines": [
+                                        "You: 'Back to business. The castle road?'",
+                                        "Hermit: 'Bring moonblossom. Then we talk destiny.'"
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "id": "hermit_bye",
+                              "text": "End conversation",
+                              "result": {
+                                "dialogueLines": [
+                                  "You nod and step back from the hermit's personal storm cloud."
+                                ]
+                              }
+                            }
+                          ],
+                          "setFlags": {
+                            "hermitMet": true
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "requestingMoonblossom": {
+            "on": {
+              "LOOK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "hermit"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "He taps his staff impatiently, waiting for that flower."
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "TALK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "hermit"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "Hermit: 'Moonblossom first. Epic guidance later.'"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "USE": [
+                {
+                  "in": "#room1_interactions.moonblossom.picked",
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "hermit",
+                      "inventoryItemId": "moonblossom"
+                    }
+                  },
+                  "target": "helpful",
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "Hermit: 'Ah. Fresh moonblossom. Acceptable hero behavior.'",
+                            "Hermit: 'As promised, take this brass key. The oak door adores dramatic entrances.'"
+                          ],
+                          "addInventoryItem": {
+                            "id": "key",
+                            "name": "Key"
+                          },
+                          "removeInventoryItemId": "moonblossom",
+                          "clearSelectedInventory": true,
+                          "setFlags": {
+                            "keyTaken": true,
+                            "hermitHelped": true
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "helpful": {
+            "on": {
+              "TALK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "hermit"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "Hermit: 'Castle gossip: avoid polite-looking mirrors. They're liars.'"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "LOOK": [
+                {
+                  "guard": {
+                    "type": "matchInteraction",
+                    "params": {
+                      "hotspotId": "hermit"
+                    }
+                  },
+                  "actions": [
+                    {
+                      "type": "emitResult",
+                      "params": {
+                        "result": {
+                          "dialogueLines": [
+                            "The hermit now nods like you passed an invisible exam."
+                          ]
                         }
                       }
                     }

@@ -3,6 +3,8 @@ import doorClosedUrl from '../assets/door_closed.png';
 import doorOpenUrl from '../assets/door_open.png';
 import inventoryKeyUrl from '../assets/inventory_key.png';
 import keyUrl from '../assets/key.png';
+import moonblossomPlaceholderUrl from '../assets/moonblossom_placeholder.svg';
+import hermitPlaceholderUrl from '../assets/hermit_placeholder.svg';
 import room1BgUrl from '../assets/room1_bg.png';
 import signUrl from '../assets/sign.png';
 
@@ -13,7 +15,9 @@ export type AssetImageId =
   | 'doorClosed'
   | 'doorOpen'
   | 'inventoryKey'
+  | 'hermitPlaceholder'
   | 'key'
+  | 'moonblossomPlaceholder'
   | 'room1Bg'
   | 'sign';
 
@@ -28,8 +32,10 @@ const IMAGE_SOURCES: Record<AssetImageId, string> = {
   actorIdle: actorIdleUrl,
   doorClosed: doorClosedUrl,
   doorOpen: doorOpenUrl,
+  hermitPlaceholder: hermitPlaceholderUrl,
   inventoryKey: inventoryKeyUrl,
   key: keyUrl,
+  moonblossomPlaceholder: moonblossomPlaceholderUrl,
   room1Bg: room1BgUrl,
   sign: signUrl,
 };
@@ -38,8 +44,10 @@ const SHOULD_TRIM: Record<AssetImageId, boolean> = {
   actorIdle: true,
   doorClosed: true,
   doorOpen: true,
+  hermitPlaceholder: true,
   inventoryKey: true,
   key: true,
+  moonblossomPlaceholder: true,
   room1Bg: false,
   sign: true,
 };
