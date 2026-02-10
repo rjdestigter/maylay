@@ -234,14 +234,12 @@
               ],
               "USE": [
                 {
+                  "in": "#room1_interactions.key.inInventory",
                   "guard": {
                     "type": "matchInteraction",
                     "params": {
                       "hotspotId": "door",
-                      "inventoryItemId": "key",
-                      "flagsAll": [
-                        "keyTaken"
-                      ]
+                      "inventoryItemId": "key"
                     }
                   },
                   "target": "open",
@@ -264,14 +262,12 @@
                   ]
                 },
                 {
+                  "in": "#room1_interactions.key.onGround",
                   "guard": {
                     "type": "matchInteraction",
                     "params": {
                       "hotspotId": "door",
-                      "inventoryItemId": "key",
-                      "flagsNot": [
-                        "keyTaken"
-                      ]
+                      "inventoryItemId": "key"
                     }
                   },
                   "actions": [
