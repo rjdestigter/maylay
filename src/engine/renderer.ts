@@ -6,7 +6,7 @@ export interface ActorRenderState {
   y: number;
   width: number;
   height: number;
-  facing: 'left' | 'right';
+  direction: 'left' | 'right' | 'up' | 'down';
   isWalking: boolean;
   walkCycle: number;
 }
@@ -46,7 +46,9 @@ export class Renderer {
   readonly renderScale = 4;
   private readonly lpcFrameWidth = 64;
   private readonly lpcFrameHeight = 64;
+  private readonly lpcDownRow = 2;
   private readonly lpcSideRow = 1;
+  private readonly lpcUpRow = 0;
 
   private readonly ctx: CanvasRenderingContext2D;
 
@@ -131,10 +133,14 @@ export class Renderer {
     }
 
     const frameCol = this.getLpcFrameColumn(animationId, actor.walkCycle);
-    const frameRow = this.lpcSideRow;
+    const frameRow = actor.direction === 'up'
+      ? this.lpcUpRow
+      : actor.direction === 'down'
+        ? this.lpcDownRow
+        : this.lpcSideRow;
     const sx = frameCol * this.lpcFrameWidth;
     const sy = frameRow * this.lpcFrameHeight;
-    const shouldFlip = actor.facing === 'right';
+    const shouldFlip = actor.direction === 'right';
 
     this.ctx.save();
     if (shouldFlip) {

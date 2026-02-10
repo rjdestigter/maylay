@@ -174,7 +174,7 @@ async function bootstrap(): Promise<void> {
 
   let actorPosition = { x: 96, y: 150 };
   let actorSize = { width: 54, height: 68 };
-  let actorFacing: 'left' | 'right' = 'right';
+  let actorDirection: 'left' | 'right' | 'up' | 'down' = 'right';
   let actorCycle = 0;
   let previousRoomId = 'room1';
   let hoveredWalkableArea = false;
@@ -981,7 +981,7 @@ async function bootstrap(): Promise<void> {
         ...actorPosition,
         width: actorSize.width * perspectiveScale,
         height: actorSize.height * perspectiveScale,
-        facing: actorFacing,
+        direction: actorDirection,
         isWalking,
         walkCycle: actorCycle,
       },
@@ -1036,8 +1036,12 @@ async function bootstrap(): Promise<void> {
 
     const dx = activeTarget.x - actorPosition.x;
     const dy = activeTarget.y - actorPosition.y;
-    if (Math.abs(dx) > 0.1) {
-      actorFacing = dx < 0 ? 'left' : 'right';
+    if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
+      if (Math.abs(dy) > Math.abs(dx)) {
+        actorDirection = dy < 0 ? 'up' : 'down';
+      } else {
+        actorDirection = dx < 0 ? 'left' : 'right';
+      }
     }
     const distance = Math.hypot(dx, dy);
 
